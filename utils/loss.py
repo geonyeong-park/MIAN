@@ -34,3 +34,28 @@ class CrossEntropy2d(nn.Module):
         predict = predict[target_mask.view(n, h, w, 1).repeat(1, 1, 1, c)].view(-1, c)
         loss = F.cross_entropy(predict, target, weight=weight, size_average=self.size_average)
         return loss
+
+
+def loss_calc(pred, label, gpu):
+    """
+    This function returns cross entropy loss for semantic segmentation
+    """
+    # out shape batch_size x channels x h x w -> batch_size x channels x h x w
+    # label shape h x w x 1 x batch_size  -> batch_size x 1 x h x w
+    label = Variable(label.long()).cuda(gpu)
+    criterion = CrossEntropy2d().cuda(gpu)
+
+    return criterion(pred, label)
+
+
+def lr_poly(base_lr, iter, max_iter, power):
+    return base_lr * ((1 - float(iter) / max_iter) ** (power))
+
+
+def adjust_learning_rate(optimizer, init_lr, i_iter, total_step, power):
+    lr = lr_poly(init_lr, i_iter, total_step, power)
+    optimizer.param_groups[0]['lr'] = lr
+    if len(optimizer.param_groups) > 1:
+        optimizer.param_groups[1]['lr'] = lr * 10
+    return lr
+

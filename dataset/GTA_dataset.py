@@ -10,19 +10,14 @@ from torch.utils import data
 from PIL import Image
 
 
-class GTA5DataSet(data.Dataset):
-    def __init__(self, root, list_path, max_iters=None, crop_size=(321, 321), mean=(128, 128, 128), scale=True, mirror=True, ignore_label=255):
+class GTADataSet(data.Dataset):
+    def __init__(self, root, list_path, transform=None, resize=(1024, 512), ignore_label=255):
         self.root = root
         self.list_path = list_path
-        self.crop_size = crop_size
-        self.scale = scale
+        self.transform = transform
+        self.resize = resize
         self.ignore_label = ignore_label
-        self.mean = mean
-        self.is_mirror = mirror
-        # self.mean_bgr = np.array([104.00698793, 116.66876762, 122.67891434])
-        self.img_ids = [i_id.strip() for i_id in open(list_path)]
-        if not max_iters==None:
-            self.img_ids = self.img_ids * int(np.ceil(float(max_iters) / len(self.img_ids)))
+        self.img_ids = sorted([i_id.strip() for i_id in open(os.path.join(list_path, 'train_img.txt'))])
         self.files = []
 
         self.id_to_trainid = {7: 0, 8: 1, 11: 2, 12: 3, 13: 4, 17: 5,
@@ -42,7 +37,6 @@ class GTA5DataSet(data.Dataset):
     def __len__(self):
         return len(self.files)
 
-
     def __getitem__(self, index):
         datafiles = self.files[index]
 
@@ -51,8 +45,9 @@ class GTA5DataSet(data.Dataset):
         name = datafiles["name"]
 
         # resize
-        image = image.resize(self.crop_size, Image.BICUBIC)
-        label = label.resize(self.crop_size, Image.NEAREST)
+        image = image.resize(self.resize, Image.BICUBIC)
+        image = image.transpose((2, 0, 1))
+        label = label.resize(self.resize, Image.NEAREST)
 
         image = np.asarray(image, np.float32)
         label = np.asarray(label, np.float32)
@@ -61,13 +56,9 @@ class GTA5DataSet(data.Dataset):
         label_copy = 255 * np.ones(label.shape, dtype=np.float32)
         for k, v in self.id_to_trainid.items():
             label_copy[label == k] = v
+        image = self.transform(image)
 
-        size = image.shape
-        image = image[:, :, ::-1]  # change to BGR
-        image -= self.mean
-        image = image.transpose((2, 0, 1))
-
-        return image.copy(), label_copy.copy(), np.array(size), name
+        return image.copy(), label_copy.copy()
 
 
 if __name__ == '__main__':

@@ -1,0 +1,63 @@
+exp_setting:
+  exp_name: 'GTA2City'
+  snapshot_dir: 'snapshots'
+  log_dir: 'log'
+  use_tensorboard: True
+  save_pred_every: 5000
+
+
+data:
+  input_size: '1024,512'
+  crop_size: 512
+  num_classes: 19
+  source: ['GTA']
+  target: 'Cityscapes'
+  num_domain: 2
+  num_workers: 4
+  ignore_label: 255
+
+
+train:
+  num_steps: 250000
+  num_steps_stop: 150000
+  batch_size: 8
+
+  base_model:
+    lr: 0.00001
+    momentum: 0.7
+  netD:
+    lr: 0.0001
+    momentum: 0.9
+  netG:
+    lr: 0.0001
+    momentum: 0.9
+  lr_decay_power: 0.9
+  weight_decay: 0.0005
+  aux_sem_thres: 1.5
+
+  lambda:
+    base_model_netG:
+      bloss_Clf: 1.
+      bloss_AdvFeat: 0.05
+      bloss_AdvImg: 0.1
+      bGloss_fake: 0.1
+      bGloss_idt: 0.03
+      bGloss_cyc: 0.1
+      bGloss_dcls: 0.1
+      bGloss_auxsem: 0.02
+    netD:
+      Dloss_real: 1.
+      Dloss_dcls: 10.
+      Dloss_auxsem: 0.7
+
+  GAN: 'LS'
+
+
+model:
+  netD:
+    conv_dim: 128
+    repeat_num: 7  # For downsampling (Remind PatchGAN)
+  netG:
+    conv_dim: 64
+    repeat_num: 7  # For ResBlock
+
