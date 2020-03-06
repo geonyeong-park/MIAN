@@ -289,10 +289,10 @@ class Solver(object):
 
         DFeatlogit = self.netDFeat(feature.to(self.gpu_map['netDFeat']))
         DSemlogit = self.netDSem(pred.to(self.gpu_map['netDSem']))
-        self.bloss_AdvFeat = self.gan_loss(nn.Sigmoid()(DFeatlogit),
-                                           self._fake_domain_label(DFeatlogit, 'Feat'))
-        self.bloss_AdvImg = self.gan_loss(nn.Sigmoid()(DSemlogit),
-                                          self._fake_domain_label(DSemlogit, 'Sem'))
+        self.bloss_AdvFeat = torch.nn.BCEWithLogitsLoss()(DFeatlogit,
+                                                        self._fake_domain_label(DFeatlogit, 'Feat'))
+        self.bloss_AdvImg = torch.nn.BCEWithLogitsLoss()(DSemlogit,
+                                                       self._fake_domain_label(DSemlogit, 'Sem'))
 
         """ Idt, Fake, Cycle, DCls, Semantic Loss (Generator) """
         idtfakeImg = self.netG(feature.to(self.gpu_map['netG']), self.domain_label)
@@ -322,8 +322,10 @@ class Solver(object):
         # Train with original domain labels
         DFeatlogit = self.netDFeat(feature.detach().to(self.gpu_map['netDFeat']))
         DSemlogit = self.netDSem(pred.detach().to(self.gpu_map['netDSem']))
-        Dloss_AdvFeat = self.gan_loss(nn.Sigmoid()(DFeatlogit), self._real_domain_label(DFeatlogit, 'Feat'))
-        Dloss_AdvSem = self.gan_loss(nn.Sigmoid()(DSemlogit), self._real_domain_label(DSemlogit, 'Sem'))
+        Dloss_AdvFeat = torch.nn.BCEWithLogitsLoss()(DFeatlogit,
+                                                     self._real_domain_label(DFeatlogit, 'Feat'))
+        Dloss_AdvSem = torch.nn.BCEWithLogitsLoss()(DSemlogit,
+                                                    self._real_domain_label(DSemlogit, 'Sem'))
         Dloss_AdvFeat.backward()
         Dloss_AdvSem.backward()
         self.log_loss['Dloss_AdvFeat'] = Dloss_AdvFeat.item()
@@ -362,9 +364,16 @@ class Solver(object):
             if (i_iter+1) % self.log_step == 0:
                 et = time.time() - self.start_time
                 et = str(datetime.timedelta(seconds=et))[:-7]
-                log = "Elapsed [{}], Iteration [{}/{}]".format(et, i_iter+1, self.early_stop_step)
+                log = "Elapsed [{}], Iteration [{}/{}]\n".format(et, i_iter+1, self.early_stop_step)
                 for tag, value in self.log_loss.items():
                     log += ", {}: {:.4f}".format(tag, value)
+
+                hist, acc = seg_accuracy(pred.detach().data,
+                                         labels.data,
+                                         self.num_classes)
+                mIoU = per_class_iu(hist)
+                mIoU = round(np.nanmean(mIoU) * 100, 2)
+                log += "\nAcc: {:.2f}, mIoU: {:.2f}".format(acc, mIoU)
                 print(log)
 
             if self.config['exp_setting']['use_tensorboard']:
@@ -385,9 +394,9 @@ class Solver(object):
                         image_fake_list.append(image_fake)
                     image_concat = torch.cat(image_fake_list, dim=3)
                     sample_path = os.path.join(self.log_dir, '{}-images.jpg'.format(i_iter+1))
-                    #sample_path2 = os.path.join(self.log_dir, '{}_trs-images.jpg'.format(i_iter+1))
+                    sample_path2 = os.path.join(self.log_dir, '{}_trs-images.jpg'.format(i_iter+1))
                     save_image(self._denorm(image_concat.data.cpu()), sample_path, nrow=self.num_domain, padding=0)
-                    #save_image(self._denorm(trsfakeImg.detach().data.cpu()), sample_path2, nrow=self.num_domain, padding=0)
+                    save_image(self._denorm(trsfakeImg.detach().data.cpu()), sample_path2, nrow=self.num_domain, padding=0)
                     print('Saved real and fake images into {}...'.format(sample_path))
 
             if (i_iter+1) % self.save_step == 0:
