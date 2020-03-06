@@ -4,6 +4,8 @@ import torch.utils.model_zoo as model_zoo
 import torch
 import torchvision
 from torchvision import models
+from torchvision.models.resnet import ResNet, Bottleneck, model_urls, load_state_dict_from_url
+from model.parallel_resnet import ParallelResNet101, PipelineParallelResNet101
 import numpy as np
 
 affine_par = True
@@ -32,18 +34,16 @@ def deactivate_batchnorm(m):
 
 class ResNetMulti(nn.Module):
     def __init__(self, num_classes):
+        """
+        split_size: number of splits per batch
+        gpus: list, [0,1,2,...]
+        """
         super(ResNetMulti, self).__init__()
+
+        #self.resnet = PipelineParallelResNet101(split_size, gpus, num_classes)
         self.resnet = nn.Sequential(*list(models.resnet101(pretrained=True).children())[:-2])
         self.resnet.apply(deactivate_batchnorm)
         self.deeplab = self._make_pred_layer(Classifier_Module, 2048, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
-
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, 0.01)
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
 
     def _make_pred_layer(self, block, inplanes, dilation_series, padding_series, num_classes):
         return block(inplanes, dilation_series, padding_series, num_classes)
@@ -51,7 +51,6 @@ class ResNetMulti(nn.Module):
     def forward(self, x):
         feature = self.resnet(x)
         pred = self.deeplab(feature)
-
         return feature, pred
 
     def get_1x_lr_params_NOscale(self):

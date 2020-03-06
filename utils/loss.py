@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import torch.nn.functional as F
 import torch.nn as nn
 from torch.autograd import Variable
@@ -36,14 +37,13 @@ class CrossEntropy2d(nn.Module):
         return loss
 
 
-def loss_calc(pred, label, gpu):
+def loss_calc(pred, label):
     """
     This function returns cross entropy loss for semantic segmentation
     """
     # out shape batch_size x channels x h x w -> batch_size x channels x h x w
     # label shape h x w x 1 x batch_size  -> batch_size x 1 x h x w
-    label = Variable(label.long()).cuda(gpu)
-    criterion = CrossEntropy2d().cuda(gpu)
+    criterion = CrossEntropy2d()
 
     return criterion(pred, label)
 
@@ -59,3 +59,17 @@ def adjust_learning_rate(optimizer, init_lr, i_iter, total_step, power):
         optimizer.param_groups[1]['lr'] = lr * 10
     return lr
 
+
+def fast_hist(a, b, n):
+    k = (a >= 0) & (a < n)
+    return np.bincount(n * a[k].astype(int) + b[k], minlength=n**2).reshape(n,n)
+
+def seg_accuracy(score, label, num_cls):
+    _, preds = torch.max(score.data, 1)
+    hist = fast_hist(label.cpu().numpy().flatten(),
+            preds.cpu().numpy().flatten(), num_cls)
+    acc = np.diag(hist).sum() / hist.sum()
+    return hist, acc
+
+def per_class_iu(hist):
+    return np.diag(hist) / (hist.sum(1) + hist.sum(0) - np.diag(hist))

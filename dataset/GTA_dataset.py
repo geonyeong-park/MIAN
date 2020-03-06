@@ -8,13 +8,13 @@ import torch
 import torchvision
 from torch.utils import data
 from PIL import Image
+from dataset.transforms import to_tensor_raw
 
 
 class GTADataSet(data.Dataset):
-    def __init__(self, root, list_path, transform=None, resize=(1024, 512), ignore_label=255):
+    def __init__(self, root, list_path, base_transform=None, resize=(1024, 512), ignore_label=255):
         self.root = root
         self.list_path = list_path
-        self.transform = transform
         self.resize = resize
         self.ignore_label = ignore_label
         self.img_ids = sorted([i_id.strip() for i_id in open(os.path.join(list_path, 'train_img.txt'))])
@@ -34,6 +34,13 @@ class GTADataSet(data.Dataset):
                 "name": name
             })
 
+        image_transform = [torchvision.transforms.Resize(self.resize, interpolation=Image.BICUBIC)] + base_transform
+        self.image_transform = torchvision.transforms.Compose(image_transform)
+
+        label_transform = []
+        label_transform.extend([torchvision.transforms.Resize(self.resize, interpolation=Image.NEAREST), to_tensor_raw])
+        self.label_transform = torchvision.transforms.Compose(label_transform)
+
     def __len__(self):
         return len(self.files)
 
@@ -42,33 +49,16 @@ class GTADataSet(data.Dataset):
 
         image = Image.open(datafiles["img"]).convert('RGB')
         label = Image.open(datafiles["label"])
+        label_np = np.asarray(label)
+        label_copy = self.ignore_label * np.ones_like(label_np)
+        for k, v in self.id_to_trainid.items():
+            label_copy[label_np == k] = v
+        label = Image.fromarray(label_copy)
         name = datafiles["name"]
 
-        # resize
-        image = image.resize(self.resize, Image.BICUBIC)
-        image = image.transpose((2, 0, 1))
-        label = label.resize(self.resize, Image.NEAREST)
+        image = self.image_transform(image)
+        label = self.label_transform(label)
 
-        image = np.asarray(image, np.float32)
-        label = np.asarray(label, np.float32)
-
-        # re-assign labels to match the format of Cityscapes
-        label_copy = 255 * np.ones(label.shape, dtype=np.float32)
-        for k, v in self.id_to_trainid.items():
-            label_copy[label == k] = v
-        image = self.transform(image)
-
-        return image.copy(), label_copy.copy()
+        return image, label
 
 
-if __name__ == '__main__':
-    dst = GTA5DataSet("./data", is_transform=True)
-    trainloader = data.DataLoader(dst, batch_size=4)
-    for i, data in enumerate(trainloader):
-        imgs, labels = data
-        if i == 0:
-            img = torchvision.utils.make_grid(imgs).numpy()
-            img = np.transpose(img, (1, 2, 0))
-            img = img[:, :, ::-1]
-            plt.imshow(img)
-            plt.show()

@@ -1,4 +1,5 @@
 import numbers
+import numpy as np
 import random
 
 import torch
@@ -25,7 +26,6 @@ class RandomCrop(object):
             if h is None and w is None:
                 _, h, w = tensor.size()
             elif tensor.size()[-2:] != (h, w):
-                print(tensor.size(), (h, w))
                 raise ValueError('Images must be same size')
         if w == tw and h == th:
             return tensors
@@ -79,3 +79,5 @@ def augment_collate(batch, crop=None, halfcrop=None, flip=True):
     batch = [transform(x) for x in batch]
     return torch.utils.data.dataloader.default_collate(batch)
 
+def to_tensor_raw(im):
+    return torch.from_numpy(np.array(im, np.int32, copy=False))

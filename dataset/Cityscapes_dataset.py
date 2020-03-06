@@ -8,7 +8,7 @@ import torch
 import torchvision
 from torch.utils import data
 from PIL import Image
-from GTA_dataset import GTADataSet
+from dataset.GTA_dataset import GTADataSet
 
 
 """
@@ -48,8 +48,8 @@ data
 """
 
 class CityscapesDataSet(GTADataSet):
-    def __init__(self, root, list_path, transform=None, resize=(1024, 512), ignore_label=255, split='train'):
-        super(CityscapesDataSet, self).__init__(root, list_path, transform, resize, ignore_label)
+    def __init__(self, root, list_path, base_transform=None, resize=(1024, 512), ignore_label=255, split='train'):
+        super(CityscapesDataSet, self).__init__(root, list_path, base_transform, resize, ignore_label)
         self.files = []
         self.split = split
         self.img_ids = sorted([i_id.strip() for i_id in open(os.path.join(list_path, '{}_img.txt'.format(split)))])
@@ -58,23 +58,10 @@ class CityscapesDataSet(GTADataSet):
         label_root = 'gtCoarse' if self.split == 'train' else 'gtFine'
         for i, name in enumerate(self.img_ids):
             img_file = osp.join(self.root, "leftImg8bit/%s/%s" % (self.split, name))
-            label_file = osp.join(self.root, "%s/%s/%s" % (label_root, self.split, name))
+            label_file = osp.join(self.root, "%s/%s/%s" % (label_root, self.split, self.label_ids[i]))
 
             self.files.append({
                 "img": img_file,
                 "label": label_file,
                 "name": name
             })
-
-
-if __name__ == '__main__':
-    dst = GTA5DataSet("./data", is_transform=True)
-    trainloader = data.DataLoader(dst, batch_size=4)
-    for i, data in enumerate(trainloader):
-        imgs, labels = data
-        if i == 0:
-            img = torchvision.utils.make_grid(imgs).numpy()
-            img = np.transpose(img, (1, 2, 0))
-            img = img[:, :, ::-1]
-            plt.imshow(img)
-            plt.show()

@@ -11,7 +11,7 @@ def fast_hist(a, b, n):
 
 
 def per_class_iu(hist):
-    return np.diag(hist) / (hist.sum(1) + hist.sum(0) - np.diag(hist))
+    return np.diag(hist) / (hist.sum(1) + hist.sum(0) - np.diag(hist) + 1e-8)
 
 
 def label_mapping(input, mapping):
@@ -23,7 +23,7 @@ def label_mapping(input, mapping):
 
 def compute_mIoU(gt_dir, pred_dir, devkit_dir=''):
     """
-    Compute IoU given the predicted colorized images and 
+    Compute IoU given the predicted colorized images and
     """
     with open(join(devkit_dir, 'info.json'), 'r') as fp:
       info = json.load(fp)
@@ -50,7 +50,7 @@ def compute_mIoU(gt_dir, pred_dir, devkit_dir=''):
         hist += fast_hist(label.flatten(), pred.flatten(), num_classes)
         if ind > 0 and ind % 10 == 0:
             print('{:d} / {:d}: {:0.2f}'.format(ind, len(gt_imgs), 100*np.mean(per_class_iu(hist))))
-    
+
     mIoUs = per_class_iu(hist)
     for ind_class in range(num_classes):
         print('===>' + name_classes[ind_class] + ':\t' + str(round(mIoUs[ind_class] * 100, 2)))

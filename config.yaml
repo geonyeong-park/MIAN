@@ -7,29 +7,29 @@ exp_setting:
 
 
 data:
-  input_size: '1024,512'
+  input_size: '512,1024'
   crop_size: 512
   num_classes: 19
   source: ['GTA']
   target: 'Cityscapes'
   num_domain: 2
-  num_workers: 4
+  num_workers: 1
   ignore_label: 255
 
 
 train:
   num_steps: 250000
   num_steps_stop: 150000
-  batch_size: 8
+  batch_size: 3
 
   base_model:
     lr: 0.00001
     momentum: 0.7
   netD:
-    lr: 0.0001
+    lr: 0.00005
     momentum: 0.9
   netG:
-    lr: 0.0001
+    lr: 0.00005
     momentum: 0.9
   lr_decay_power: 0.9
   weight_decay: 0.0005
@@ -38,17 +38,17 @@ train:
   lambda:
     base_model_netG:
       bloss_Clf: 1.
-      bloss_AdvFeat: 0.05
-      bloss_AdvImg: 0.1
-      bGloss_fake: 0.1
-      bGloss_idt: 0.03
-      bGloss_cyc: 0.1
-      bGloss_dcls: 0.1
-      bGloss_auxsem: 0.02
+      bloss_AdvFeat: 0.2
+      bloss_AdvImg: 0.2
+      bGloss_fake: 0.5
+      bGloss_idt: 0.5
+      bGloss_cyc: 0.5 # Semantic Segmentation에서는 classification loss가 크므로, 0.5~1까지는 키워줘야할 듯
+      bGloss_dcls: 1.
+      bGloss_auxsem: 0.1
     netD:
-      Dloss_real: 1.
+      Dloss_fakereal: 1.
       Dloss_dcls: 10.
-      Dloss_auxsem: 0.7
+      Dloss_auxsem: 1.
 
   GAN: 'LS'
 
@@ -56,8 +56,9 @@ train:
 model:
   netD:
     conv_dim: 128
-    repeat_num: 7  # For downsampling (Remind PatchGAN)
+    repeat_num: 6  # For downsampling (Remind PatchGAN)
   netG:
-    conv_dim: 64
-    repeat_num: 7  # For ResBlock
+    conv_dim: 512
+    norm: 'CondIN'
+    repeat_num: 3  # For ResBlock
 
