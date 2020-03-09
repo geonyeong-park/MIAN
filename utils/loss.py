@@ -64,10 +64,9 @@ def fast_hist(a, b, n):
     k = (a >= 0) & (a < n)
     return np.bincount(n * a[k].astype(int) + b[k], minlength=n**2).reshape(n,n)
 
-def seg_accuracy(score, label, num_cls):
-    _, preds = torch.max(score.data, 1)
-    hist = fast_hist(label.cpu().numpy().flatten(),
-            preds.cpu().numpy().flatten(), num_cls)
+def seg_accuracy(pred, label, num_cls):
+    #_, preds = torch.max(score.data, 1)
+    hist = fast_hist(label.flatten(), pred.flatten(), num_cls)
     acc = np.diag(hist).sum() / hist.sum()
     return hist, acc
 

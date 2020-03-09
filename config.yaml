@@ -20,11 +20,11 @@ data:
 train:
   num_steps: 250000
   num_steps_stop: 150000
-  batch_size: 3
+  batch_size: 1
 
   base_model:
     lr: 0.00001
-    momentum: 0.7
+    momentum: 0.9
   netD:
     lr: 0.00005
     momentum: 0.9
@@ -51,14 +51,21 @@ train:
       Dloss_auxsem: 1.
 
   GAN: 'LS'
+  base: 'VGG'  # VGG or ResNet
 
 
 model:
   netD:
-    conv_dim: 128
-    repeat_num: 6  # For downsampling (Remind PatchGAN)
+    conv_dim: 
+      img: 128
+      sem: 32
+    repeat_num:   # For downsampling (Remind PatchGAN)
+      img: 6
+      sem: 7
   netG:
-    conv_dim: 512
+    conv_dim: 
+      ResNet: 64
+      VGG: 32
     norm: 'CondIN'
     repeat_num: 3  # For ResBlock
 

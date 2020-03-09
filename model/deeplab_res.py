@@ -34,10 +34,6 @@ def deactivate_batchnorm(m):
 
 class ResNetMulti(nn.Module):
     def __init__(self, num_classes):
-        """
-        split_size: number of splits per batch
-        gpus: list, [0,1,2,...]
-        """
         super(ResNetMulti, self).__init__()
 
         #self.resnet = PipelineParallelResNet101(split_size, gpus, num_classes)
@@ -88,7 +84,7 @@ class ResNetMulti(nn.Module):
                 {'params': self.get_10x_lr_params(), 'lr': 10 * lr}]
 
 
-def DeeplabMulti(num_classes=21):
+def DeeplabRes(num_classes=21):
     model = ResNetMulti(num_classes)
     return model
 

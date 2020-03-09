@@ -10,9 +10,11 @@ import matplotlib.pyplot as plt
 import random
 
 from solver import Solver
-from model.deeplab_multi import DeeplabMulti
-from model.discriminator import FCDiscriminator, IMGDiscriminator
-from model.generator import Generator
+from model.deeplab_res import DeeplabRes
+from model.deeplab_vgg import DeeplabVGG
+from model.discriminator import FCDiscriminator, IMGDiscriminator, SEMDiscriminator
+from model.generator_res import GeneratorRes
+from model.generator_vgg import GeneratorVGG
 from dataset.multiloader import MultiDomainLoader
 import horovod.torch as hvd
 
@@ -57,10 +59,10 @@ def main(config, args):
     gpu = args.gpu
     gpu_map = {
         'basemodel': 'cuda:0',
-        'netDImg': 'cuda:1',
+        'netDImg': 'cuda:2',
         'netDSem': 'cuda:2',
         'netDFeat': 'cuda:2',
-        'netG': 'cuda:2',
+        'netG': 'cuda:1',
         'all_order': gpu
     }
 
@@ -72,14 +74,8 @@ def main(config, args):
     batch_size = config['train']['batch_size']
     num_domain = len(dataset)
 
-    D_convdim = config['model']['netD']['conv_dim']
-    D_repeat_num = config['model']['netD']['repeat_num']
-
-    G_convdim = config['model']['netG']['conv_dim']
-    G_norm = config['model']['netG']['norm']
-    G_repeat_num = config['model']['netG']['repeat_num']
-
-
+    base = config['train']['base']
+    assert base == 'VGG' or base == 'ResNet'
     base_lr = config['train']['base_model']['lr']
     base_momentum = config['train']['base_model']['momentum']
     D_lr = config['train']['netD']['lr']
@@ -89,26 +85,45 @@ def main(config, args):
     weight_decay = config['train']['weight_decay']
 
 
+    D_convdim_img = config['model']['netD']['conv_dim']['img']
+    D_convdim_sem = config['model']['netD']['conv_dim']['sem']
+    D_repeat_img = config['model']['netD']['repeat_num']['img']
+    D_repeat_sem = config['model']['netD']['repeat_num']['sem']
+
+    G_convdim = config['model']['netG']['conv_dim'][base]
+    G_norm = config['model']['netG']['norm']
+    G_repeat_num = config['model']['netG']['repeat_num']
+
     # ------------------------
     # 1. Create Model
     # ------------------------
 
-    basemodel = DeeplabMulti(num_classes=num_classes)
+    if base == 'ResNet':
+        basemodel = DeeplabRes(num_classes=num_classes)
+    elif base == 'VGG':
+        basemodel = DeeplabVGG(num_classes=num_classes)
     basemodel.to(gpu_map['basemodel'])
 
-    netDImg = IMGDiscriminator(image_size=cropped_size, conv_dim=D_convdim, repeat_num=D_repeat_num,
+    netDImg = IMGDiscriminator(image_size=cropped_size, conv_dim=D_convdim_img, repeat_num=D_repeat_img,
                                semantic_mask=False, channel=3, num_domain=num_domain, num_classes=num_classes)
-    netDSem = IMGDiscriminator(image_size=cropped_size, conv_dim=D_convdim, repeat_num=D_repeat_num,
-                               semantic_mask=True, channel=num_classes, num_domain=num_domain, num_classes=num_classes)
-    netDFeat = FCDiscriminator(num_domain=num_domain)
+    netDSem = SEMDiscriminator(conv_dim=D_convdim_sem, repeat_num=D_repeat_sem,
+                               channel=num_classes, num_domain=num_domain)
+    if base == 'ResNet':
+        netDFeat = FCDiscriminator(num_features=2048, ndf=1024, num_domain=num_domain)
+    elif base == 'VGG':
+        netDFeat = FCDiscriminator(num_features=512, ndf=512, num_domain=num_domain)
 
     netDImg.to(gpu_map['netDImg'])
     netDSem.to(gpu_map['netDSem'])
     netDFeat.to(gpu_map['netDFeat'])
 
-    # TODO: Change with ResNet50 (or arbitrary) setting
-    netG = Generator(in_dim=2048, conv_dim=G_convdim, repeat_num=G_repeat_num,
-                     num_domain=num_domain, norm=G_norm, gpu=gpu_map['netG'])
+    if base == 'ResNet':
+        netG = GeneratorRes(in_dim=2048, conv_dim=G_convdim, repeat_num=G_repeat_num,
+                        num_domain=num_domain, norm=G_norm, gpu=gpu_map['netG'])
+    elif base == 'VGG':
+        netG = GeneratorVGG(num_filters=G_convdim, num_domain=num_domain,
+                            norm=G_norm, gpu=gpu_map['netG'])
+
     netG.to(gpu_map['netG'])
 
     # ------------------------
@@ -159,7 +174,7 @@ def main(config, args):
                                     named_parameters=netG.named_parameters(),
                                     backward_passes_per_step=optG_batches_per_allreduce)
 
-    solver = Solver(basemodel, netDImg, netDSem, netDFeat, netG, loader, TargetLoader,
+    solver = Solver(base, basemodel, netDImg, netDSem, netDFeat, netG, loader, TargetLoader,
                     optBase, optDImg, optDSem, optDFeat, optG, config, args, gpu_map)
 
     # ------------------------

@@ -60,11 +60,11 @@ class ResidualBlock(nn.Module):
 
 class UpsamplingBlock(nn.Module):
     """Residual Block with conditional batch normalization."""
-    def __init__(self, dim_in, num_domain, norm):
+    def __init__(self, dim_in, dim_out, num_domain, norm):
         super(UpsamplingBlock, self).__init__()
         assert norm == 'CondBN' or norm == 'CondIN'
-        self.conv = nn.ConvTranspose2d(dim_in, dim_in // 2, kernel_size=4, stride=2, padding=1, bias=False)
-        self.cbn = ConditionalBatchOrInstanceNorm2d(dim_in // 2, num_domain, norm)
+        self.conv = nn.ConvTranspose2d(dim_in, dim_out, kernel_size=4, stride=2, padding=1, bias=False)
+        self.cbn = ConditionalBatchOrInstanceNorm2d(dim_out, num_domain, norm)
         self.a = nn.ReLU(inplace=True)
 
     def forward(self, input, cls):
@@ -73,10 +73,10 @@ class UpsamplingBlock(nn.Module):
         x = self.a(x)
         return x
 
-class Generator(nn.Module):
+class GeneratorRes(nn.Module):
     """Generator network."""
     def __init__(self, in_dim=2048, conv_dim=1024, num_domain=3, repeat_num=3, norm='CondIN', gpu=None):
-        super(Generator, self).__init__()
+        super(GeneratorRes, self).__init__()
 
         curr_dim = conv_dim
         self.repeat_num_RB = repeat_num
@@ -95,7 +95,7 @@ class Generator(nn.Module):
 
         # Up-sampling layers.
         for i in range(self.repeat_num_US):
-            setattr(self, 'US{}'.format(i), UpsamplingBlock(dim_in=curr_dim, num_domain=num_domain, norm=norm))
+            setattr(self, 'US{}'.format(i), UpsamplingBlock(dim_in=curr_dim, dim_out=curr_dim//2, num_domain=num_domain, norm=norm))
             curr_dim = curr_dim // 2
 
         self.last_conv = nn.Conv2d(curr_dim, 3, kernel_size=7, stride=1, padding=3, bias=False)

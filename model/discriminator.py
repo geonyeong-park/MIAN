@@ -3,8 +3,8 @@ import torch.nn as nn
 from torch.nn.utils import spectral_norm
 import torch.nn.functional as F
 import numpy as np
-from model.generator import ResidualBlock
-from model.deeplab_multi import Classifier_Module
+from model.generator_res import ResidualBlock
+from model.deeplab_res import Classifier_Module
 
 class FCDiscriminator(nn.Module):
     def __init__(self, num_features=2048, ndf=1024, num_domain=3):
@@ -19,7 +19,7 @@ class FCDiscriminator(nn.Module):
         compress.append(nn.Conv2d(num_features, curr_dim, kernel_size=4, stride=2, padding=1))
         compress.append(self.leaky_relu)
 
-        for i in range(2):
+        for i in range(3):
             compress.append(nn.Conv2d(curr_dim, curr_dim // 2, kernel_size=4, stride=2, padding=1))
             compress.append(self.leaky_relu)
             curr_dim = curr_dim // 2
@@ -117,3 +117,25 @@ class IMGDiscriminator(nn.Module):
             out_domain = self.conv_domain_cls(h)
             return out_src, out_domain.view(out_domain.size(0), out_domain.size(1)), out_aux
 
+
+class SEMDiscriminator(nn.Module):
+    def __init__(self, conv_dim=32, channel=3, repeat_num=7, num_domain=3):
+        super(SEMDiscriminator, self).__init__()
+
+        downsample = []
+        next_dim = conv_dim
+        curr_dim = channel
+
+        for i in range(repeat_num):
+            next_dim = next_dim * 2 if not next_dim > 1000 else next_dim
+            downsample.append(spectral_norm(nn.Conv2d(curr_dim, next_dim, kernel_size=4, stride=2, padding=1)))
+            downsample.append(nn.LeakyReLU(0.01))
+            curr_dim = next_dim
+
+        self.downsample = nn.Sequential(*downsample)
+        self.conv_domain_cls_patch = nn.Conv2d(next_dim, num_domain, kernel_size=3, stride=1, padding=1, bias=False)
+
+    def forward(self, x):
+        h = self.downsample(x)
+        out_src = self.conv_domain_cls_patch(h)
+        return out_src

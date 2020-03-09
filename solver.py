@@ -7,6 +7,7 @@ import os
 import os.path as osp
 import matplotlib.pyplot as plt
 from utils.loss import CrossEntropy2d, loss_calc, lr_poly, adjust_learning_rate, seg_accuracy, per_class_iu
+from utils.visualize import colorize_mask, save_prediction
 import time
 import datetime
 from PIL import Image
@@ -18,13 +19,8 @@ import warnings
 import time
 
 
-palette = [128, 64, 128, 244, 35, 232, 70, 70, 70, 102, 102, 156, 190, 153, 153, 153, 153, 153, 250, 170, 30,
-           220, 220, 0, 107, 142, 35, 152, 251, 152, 70, 130, 180, 220, 20, 60, 255, 0, 0, 0, 0, 142, 0, 0, 70,
-           0, 60, 100, 0, 80, 100, 0, 0, 230, 119, 11, 32]
-
-
 class Solver(object):
-    def __init__(self, basemodel, netDImg, netDSem, netDFeat, netG, loader, TargetLoader,
+    def __init__(self, base, basemodel, netDImg, netDSem, netDFeat, netG, loader, TargetLoader,
                  optBase, optDImg, optDSem, optDFeat, optG, config, args, gpu_map):
         self.args = args
         self.config = config
@@ -35,6 +31,7 @@ class Solver(object):
         self.snapshot_dir = os.path.join(snapshot_dir, exp_name)
         self.log_dir = os.path.join(log_dir, exp_name)
 
+        self.base = base
         self.basemodel = basemodel
         self.netDImg = netDImg
         self.netDSem = netDSem
@@ -88,9 +85,9 @@ class Solver(object):
 
         self.log_loss = {}
         self.log_lr = {}
-        self.log_step = 10
+        self.log_step = 1000
         self.sample_step = 1000
-        self.val_step = 5000
+        self.val_step = 1000
         self.save_step = 5000 #5000
         self.logger = Logger(self.log_dir)
 
@@ -198,6 +195,11 @@ class Solver(object):
         # each row of 0-dim corresponds to logit from i-th auxiliary semantic classifier
         return torch.cat([self._interp(ith).unsqueeze(0) for ith in x], dim=0)
 
+    def _save_prediction(self, path, pred, lb):
+        pd_col = colorize_mask(pred)
+        lb_col = colorize_mask(lb)
+        save_prediction([pd_col, lb_col], path)
+
     def _aux_semantic_loss(self, aux_logit_5D, label):
         # aux_logit_5D: (num_source, batch, c, w, h)
         aux_logit = aux_logit_5D.permute(1, 0, 2, 3, 4)
@@ -207,6 +209,14 @@ class Solver(object):
             [aux_logit_source[i, source_domain].unsqueeze(0) for i, source_domain in enumerate(mask)],
             dim=0)
         return loss_calc(aux_logit_for_each_target_D, label)
+
+    def _netVGG(self, concat1, concat2, concat3, concat4, feature, domain_label):
+        concat1 = concat1.to(self.gpu_map['netG'])
+        concat2 = concat2.to(self.gpu_map['netG'])
+        concat3 = concat3.to(self.gpu_map['netG'])
+        concat4 = concat4.to(self.gpu_map['netG'])
+        feature = feature.to(self.gpu_map['netG'])
+        return self.netG(concat1, concat2, concat3, concat4, feature, domain_label), feature
 
     def _backprop_weighted_losses(self, lambdas, aux_over_ths):
         if not aux_over_ths:
@@ -283,6 +293,9 @@ class Solver(object):
 
         """ Classification and Adversarial Loss (Basemodel) """
         feature, pred = self.basemodel(images)
+        if self.base == 'VGG':
+            concat1, concat2, concat3, concat4, feature = feature
+
         pred = self._interp(pred)
         self.bloss_Clf = loss_calc(pred[ :self.num_source*self.batch_size].to(self.gpu0),
                                    labels)
@@ -295,10 +308,17 @@ class Solver(object):
                                                        self._fake_domain_label(DSemlogit, 'Sem'))
 
         """ Idt, Fake, Cycle, DCls, Semantic Loss (Generator) """
-        idtfakeImg = self.netG(feature.to(self.gpu_map['netG']), self.domain_label)
-        trsfakeImg = self.netG(feature.to(self.gpu_map['netG']), self.shuffled_domain_label)
-        cycFeat, _ = self.basemodel(trsfakeImg.to(self.gpu0))
-        cycfakeImg = self.netG(cycFeat.to(self.gpu_map['netG']), self.domain_label)
+        if self.base == 'ResNet':
+            idtfakeImg = self.netG(feature.to(self.gpu_map['netG']), self.domain_label)
+            trsfakeImg = self.netG(feature.to(self.gpu_map['netG']), self.shuffled_domain_label)
+            cycFeat, _ = self.basemodel(trsfakeImg.to(self.gpu0))
+            cycfakeImg = self.netG(cycFeat.to(self.gpu_map['netG']), self.domain_label)
+        elif self.base == 'VGG':
+            idtfakeImg, feature = self._netVGG(concat1, concat2, concat3, concat4, feature, self.domain_label)
+            trsfakeImg, _ = self._netVGG(concat1, concat2, concat3, concat4, feature, self.shuffled_domain_label)
+            cycFeat, _ = self.basemodel(trsfakeImg.to(self.gpu0))
+            concat1, concat2, concat3, concat4, cycFeat = cycFeat
+            cycfakeImg, _ = self._netVGG(concat1, concat2, concat3, concat4, cycFeat, self.domain_label)
 
         fake_logit, dcls_logit, aux_logit = self.netDImg(trsfakeImg.to(self.gpu_map['netDImg']))
         self.bGloss_fake = self.gan_loss(fake_logit,
@@ -367,13 +387,22 @@ class Solver(object):
                 log = "Elapsed [{}], Iteration [{}/{}]\n".format(et, i_iter+1, self.early_stop_step)
                 for tag, value in self.log_loss.items():
                     log += ", {}: {:.4f}".format(tag, value)
+                histList = np.zeros((self.num_classes, self.num_classes))
+                accList = []
+                source_pd = pred.detach().data[:self.batch_size*self.num_source].max(1)[1].cpu().numpy()
+                source_lb = labels.data.cpu().numpy()
 
-                hist, acc = seg_accuracy(pred.detach().data,
-                                         labels.data,
-                                         self.num_classes)
-                mIoU = per_class_iu(hist)
-                mIoU = round(np.nanmean(mIoU) * 100, 2)
-                log += "\nAcc: {:.2f}, mIoU: {:.2f}".format(acc, mIoU)
+                for i, (pd, lb) in enumerate(zip(source_pd, source_lb)):
+                    hist, acc = seg_accuracy(pd, lb, self.num_classes)
+                    histList += hist
+                    accList.append(acc.item() * 100)
+                    if i == 0:
+                        sample_path = os.path.join(self.log_dir, '{}_pred-images.jpg'.format(i_iter+1))
+                        self._save_prediction(sample_path, pd, lb)
+
+                mIoU = per_class_iu(histList)
+                mIoU = round(np.mean(mIoU) * 100, 2)
+                log += "\nAcc: {:.2f}, mIoU: {:.2f}".format(np.mean(acc), mIoU)
                 print(log)
 
             if self.config['exp_setting']['use_tensorboard']:
@@ -390,11 +419,16 @@ class Solver(object):
                     image_fake_list = [image_fixed]
                     for d_fixed in self._fixed_test_domain_label(num_sample=self.num_domain):
                         feature, _ = self.basemodel(image_fixed.to(self.gpu0))
-                        image_fake = self.netG(feature.to(self.gpu_map['netG']), d_fixed.to(self.gpu_map['netG']))
+                        if self.base == 'VGG':
+                            concat1, concat2, concat3, concat4, feature = feature
+                            image_fake, _ = self._netVGG(concat1, concat2, concat3, concat4, feature,
+                                                         d_fixed.to(self.gpu_map['netG']))
+                        else:
+                            image_fake = self.netG(feature.to(self.gpu_map['netG']), d_fixed.to(self.gpu_map['netG']))
                         image_fake_list.append(image_fake)
                     image_concat = torch.cat(image_fake_list, dim=3)
-                    sample_path = os.path.join(self.log_dir, '{}-images.jpg'.format(i_iter+1))
-                    sample_path2 = os.path.join(self.log_dir, '{}_trs-images.jpg'.format(i_iter+1))
+                    sample_path = os.path.join(self.log_dir, '{}-FixTrsimages.jpg'.format(i_iter+1))
+                    sample_path2 = os.path.join(self.log_dir, '{}_RandomTrs-images.jpg'.format(i_iter+1))
                     save_image(self._denorm(image_concat.data.cpu()), sample_path, nrow=self.num_domain, padding=0)
                     save_image(self._denorm(trsfakeImg.detach().data.cpu()), sample_path2, nrow=self.num_domain, padding=0)
                     print('Saved real and fake images into {}...'.format(sample_path))
@@ -425,20 +459,21 @@ class Solver(object):
                 target_labels = target_labels.to(self.gpu0)
 
                 _, target_pred = self.basemodel(target_images)
-                target_pred = target_pred.detach()
-                if torch.isnan(target_pred).any(): raise ValueError
-                target_pred = self._interp_target(target_pred)
-                target_pred = target_pred.detach()
-                if torch.isnan(target_pred).any(): raise ValueError
 
-                hist, acc = seg_accuracy(target_pred, target_labels.data, self.num_classes)
-                histList += hist
-                #if val_iter % 10 == 0:
-                    #TODO: nan방지 위해서 smoothing 더할건지?
-                    #print('[mIoU] {:d}: {:0.2f}'.format(val_iter, 100*np.mean(per_class_iu(hist))))
-                accList.append(acc.item() * 100)
+                if torch.isnan(target_pred).any(): raise ValueError
+                target_pred = self._interp_target(target_pred).max(1)[1].data.cpu().numpy()
+                target_labels = target_labels.data.cpu().numpy()
 
-        mIoUs = per_class_iu(hist)
+                for j, (pd, lb) in enumerate(zip(target_pred, target_labels)):
+                    hist, acc = seg_accuracy(pd, lb, self.num_classes)
+                    histList += hist
+                    accList.append(acc.item() * 100)
+
+                    if i == 0 and j == 0:
+                        sample_path = os.path.join(self.log_dir, '{}_pred_valid-images.jpg'.format(i_iter+1))
+                        self._save_prediction(sample_path, pd, lb)
+
+        mIoUs = per_class_iu(histList)
         if math.isnan(np.mean(mIoUs)):
             warnings.warn('mIoU NaN; {}'.format(mIoUs))
         mIoUs = round(np.nanmean(mIoUs) * 100, 2)
