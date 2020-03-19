@@ -21,6 +21,7 @@ import time
 
 class Solver(object):
     def __init__(self, base, basemodel, netDImg, netDSem, netDFeat, netG, loader, TargetLoader,
+                 base_lr, DImg_lr, DSem_lr, DFeat_lr, G_lr,
                  optBase, optDImg, optDSem, optDFeat, optG, config, args, gpu_map):
         self.args = args
         self.config = config
@@ -64,9 +65,6 @@ class Solver(object):
         elif config['train']['GAN'] == 'LS':
             self.gan_loss = torch.nn.MSELoss()
 
-        crop_size = self.config['data']['crop_size']
-        self.input_size = (crop_size, crop_size)
-
         original_size = config['data']['input_size']
         w,h = map(int, original_size.split(','))
         self.original_size = (w,h)
@@ -74,9 +72,11 @@ class Solver(object):
         self.real_label = 0
         self.fake_label = 1
 
-        self.base_lr = config['train']['base_model']['lr']
-        self.D_lr = config['train']['netD']['lr']
-        self.G_lr = config['train']['netG']['lr']
+        self.base_lr = base_lr
+        self.DImg_lr = DImg_lr
+        self.DSem_lr = DSem_lr
+        self.DFeat_lr = DFeat_lr
+        self.G_lr = G_lr
         self.num_classes = config['data']['num_classes']
 
         self.total_step = self.config['train']['num_steps']
@@ -85,8 +85,8 @@ class Solver(object):
 
         self.log_loss = {}
         self.log_lr = {}
-        self.log_step = 1000
-        self.sample_step = 1000
+        self.log_step = 100
+        self.sample_step = 100
         self.val_step = 1000
         self.save_step = 5000 #5000
         self.logger = Logger(self.log_dir)
@@ -113,26 +113,11 @@ class Solver(object):
                 print('Training Finished')
 
     def _adjust_lr_opts(self, i_iter):
-        self.log_lr['base'] = adjust_learning_rate(self.optBase, hvd.size()*self.base_lr, i_iter, self.total_step, self.power)
-        self.log_lr['DImg'] = adjust_learning_rate(self.optDImg, hvd.size()*self.D_lr, i_iter, self.total_step, self.power)
-        self.log_lr['DSem'] = adjust_learning_rate(self.optDSem, hvd.size()*self.D_lr, i_iter, self.total_step, self.power)
-        self.log_lr['DFeat'] = adjust_learning_rate(self.optDFeat, hvd.size()*self.D_lr, i_iter, self.total_step, self.power)
-        self.log_lr['G'] = adjust_learning_rate(self.optG, hvd.size()*self.G_lr, i_iter, self.total_step, self.power)
-
-    def _zero_buffer(self):
-        self.optDFeat.zero_grad()
-        self.optDSem.zero_grad()
-        self.optDImg.zero_grad()
-        self.optBase.zero_grad()
-        self.optG.zero_grad()
-
-    def _update_opts(self):
-        self.optDFeat.step()
-        self.optDSem.step()
-        self.optDImg.step()
-
-        self.optBase.step()
-        self.optG.step()
+        self.log_lr['base'] = adjust_learning_rate(self.optBase, self.base_lr, i_iter, self.total_step, self.power)
+        self.log_lr['DImg'] = adjust_learning_rate(self.optDImg, self.DImg_lr, i_iter, self.total_step, self.power)
+        self.log_lr['DSem'] = adjust_learning_rate(self.optDSem, self.DSem_lr, i_iter, self.total_step, self.power)
+        self.log_lr['DFeat'] = adjust_learning_rate(self.optDFeat, self.DFeat_lr, i_iter, self.total_step, self.power)
+        self.log_lr['G'] = adjust_learning_rate(self.optG, self.G_lr, i_iter, self.total_step, self.power)
 
     def _broadcast_param_opt(self):
         hvd.broadcast_parameters(self.basemodel.state_dict(), root_rank=0)
@@ -158,14 +143,7 @@ class Solver(object):
             fixed_label.append([i]*num_sample)
 
         fixed_label = torch.LongTensor(np.array(fixed_label))
-        print(fixed_label)
         return fixed_label
-
-    def _block_or_release_updateD(self, requires_grad=False):
-        Ds = [self.netDFeat, self.netDImg, self.netDSem]
-        for D in Ds:
-            for param in D.parameters():
-                param.requires_grad = requires_grad
 
     def _fake_domain_label(self, tensor, model):
         if type(tensor).__module__ == np.__name__:
@@ -184,10 +162,6 @@ class Solver(object):
         return zeros.to(self.gpu_map['netD{}'.format(model)])
 
     def _interp(self, x):
-        interp = nn.Upsample(size=(self.input_size[0], self.input_size[1]), mode='bilinear')
-        return interp(x)
-
-    def _interp_target(self, x):
         interp = nn.Upsample(size=(self.original_size[0], self.original_size[1]), mode='bilinear')
         return interp(x)
 
@@ -211,14 +185,15 @@ class Solver(object):
         return loss_calc(aux_logit_for_each_target_D, label)
 
     def _netVGG(self, concat1, concat2, concat3, concat4, feature, domain_label):
-        concat1 = concat1.to(self.gpu_map['netG'])
-        concat2 = concat2.to(self.gpu_map['netG'])
-        concat3 = concat3.to(self.gpu_map['netG'])
+        concat1 = concat1.to(self.gpu_map['netG_2'])
+        concat2 = concat2.to(self.gpu_map['netG_2'])
+        concat3 = concat3.to(self.gpu_map['netG_2'])
         concat4 = concat4.to(self.gpu_map['netG'])
         feature = feature.to(self.gpu_map['netG'])
-        return self.netG(concat1, concat2, concat3, concat4, feature, domain_label), feature
+        domain_label = domain_label.to(self.gpu_map['netG'])
+        return self.netG(concat1, concat2, concat3, concat4, feature, domain_label)
 
-    def _backprop_weighted_losses(self, lambdas, aux_over_ths):
+    def _backprop_weighted_losses(self, lambdas, aux_over_ths, retain_graph=False):
         if not aux_over_ths:
             for key in lambdas.keys():
                 if 'aux' in key: lambdas[key]=0.
@@ -228,11 +203,18 @@ class Solver(object):
             k_loss = getattr(self, k)
             self.log_loss[k] = k_loss.item()
             loss += k_loss.to(self.gpu0) * weight
-        loss.backward()
+        loss.backward(retain_graph=retain_graph)
 
     def _train_step(self, i_iter):
         self._adjust_lr_opts(i_iter)
-        self._zero_buffer()
+
+        self.optDFeat.synchronize()
+        self.optDSem.synchronize()
+        self.optDImg.synchronize()
+
+        self.optDFeat.zero_grad()
+        self.optDSem.zero_grad()
+        self.optDImg.zero_grad()
 
         """
         - Basemodel/Generator
@@ -286,61 +268,44 @@ class Solver(object):
         self.shuffled_domain_label = self.shuffled_domain_label.to(self.gpu_map['netG'])
 
         # -----------------------------
-        # 2. Train Basemodel and netG
+        # 2. Feedforward Basemodel and netG
         # -----------------------------
-
-        self._block_or_release_updateD(requires_grad=False)
 
         """ Classification and Adversarial Loss (Basemodel) """
         feature, pred = self.basemodel(images)
         if self.base == 'VGG':
-            concat1, concat2, concat3, concat4, feature = feature
+            concat1, concat2, concat3, concat4, concat5, Dfeature = feature
 
         pred = self._interp(pred)
-        self.bloss_Clf = loss_calc(pred[ :self.num_source*self.batch_size].to(self.gpu0),
-                                   labels)
 
-        DFeatlogit = self.netDFeat(feature.to(self.gpu_map['netDFeat']))
-        DSemlogit = self.netDSem(pred.to(self.gpu_map['netDSem']))
-        self.bloss_AdvFeat = torch.nn.BCEWithLogitsLoss()(DFeatlogit,
-                                                        self._fake_domain_label(DFeatlogit, 'Feat'))
-        self.bloss_AdvImg = torch.nn.BCEWithLogitsLoss()(DSemlogit,
-                                                       self._fake_domain_label(DSemlogit, 'Sem'))
 
         """ Idt, Fake, Cycle, DCls, Semantic Loss (Generator) """
         if self.base == 'ResNet':
-            idtfakeImg = self.netG(feature.to(self.gpu_map['netG']), self.domain_label)
-            trsfakeImg = self.netG(feature.to(self.gpu_map['netG']), self.shuffled_domain_label)
+            idtfakeImg = self.netG(concat5.to(self.gpu_map['netG']), self.domain_label)
+            trsfakeImg = self.netG(concat5.to(self.gpu_map['netG']), self.shuffled_domain_label)
             cycFeat, _ = self.basemodel(trsfakeImg.to(self.gpu0))
             cycfakeImg = self.netG(cycFeat.to(self.gpu_map['netG']), self.domain_label)
         elif self.base == 'VGG':
-            idtfakeImg, feature = self._netVGG(concat1, concat2, concat3, concat4, feature, self.domain_label)
-            trsfakeImg, _ = self._netVGG(concat1, concat2, concat3, concat4, feature, self.shuffled_domain_label)
+            idtfakeImg = self._netVGG(concat1, concat2, concat3, concat4, concat5, self.domain_label)
+            trsfakeImg = self._netVGG(concat1, concat2, concat3, concat4, concat5, self.shuffled_domain_label)
             cycFeat, _ = self.basemodel(trsfakeImg.to(self.gpu0))
-            concat1, concat2, concat3, concat4, cycFeat = cycFeat
-            cycfakeImg, _ = self._netVGG(concat1, concat2, concat3, concat4, cycFeat, self.domain_label)
-
-        fake_logit, dcls_logit, aux_logit = self.netDImg(trsfakeImg.to(self.gpu_map['netDImg']))
-        self.bGloss_fake = self.gan_loss(fake_logit,
-                                    Variable(torch.FloatTensor(fake_logit.data.size()).fill_(self.real_label))
-                                    .cuda(self.gpu_map['netDImg']))
-        self.bGloss_idt = torch.mean(torch.abs(images - idtfakeImg.to(self.gpu0)))
-        self.bGloss_cyc = torch.mean(torch.abs(images - cycfakeImg.to(self.gpu0)))
-        self.bGloss_dcls = nn.CrossEntropyLoss()(dcls_logit,
-                                                 self.shuffled_domain_label.to(self.gpu_map['netDImg']))
-        self.bGloss_auxsem = self._aux_semantic_loss(self._interp_5d(aux_logit).to(self.gpu0), labels)
-        # At this moment we don't care about semantic loss of target data
-
+            concat1, concat2, concat3, concat4, concat5, _ = cycFeat
+            cycfakeImg = self._netVGG(concat1, concat2, concat3, concat4, concat5, self.domain_label)
 
         # -----------------------------
         # 3. Train Discriminators
         # -----------------------------
 
-        self._block_or_release_updateD(requires_grad=True)
+        for param in self.netDImg.parameters():
+            param.requires_grad = True
+        for param in self.netDSem.parameters():
+            param.requires_grad = True
+        for param in self.netDFeat.parameters():
+            param.requires_grad = True
 
         """ (FeatD, SemD) """
         # Train with original domain labels
-        DFeatlogit = self.netDFeat(feature.detach().to(self.gpu_map['netDFeat']))
+        DFeatlogit = self.netDFeat(Dfeature.detach().to(self.gpu_map['netDFeat']))
         DSemlogit = self.netDSem(pred.detach().to(self.gpu_map['netDSem']))
         Dloss_AdvFeat = torch.nn.BCEWithLogitsLoss()(DFeatlogit,
                                                      self._real_domain_label(DFeatlogit, 'Feat'))
@@ -365,16 +330,54 @@ class Solver(object):
         self.Dloss_fakereal = self.Dloss_fake + self.Dloss_real
         # At this moment we don't care about semantic loss of target data
 
+        self._backprop_weighted_losses(self.config['train']['lambda']['netD'],
+                                       aux_over_ths=True,
+                                       retain_graph=True)
+        self.optDFeat.step()
+        self.optDSem.step()
+        self.optDImg.step()
+        # ----------------------------
+        # 4. Train Basemodel and netG
+        # ----------------------------
 
-        # -----------------------------
-        # 4. Update
-        # -----------------------------
+        self.optBase.synchronize()
+        self.optG.synchronize()
 
-        self._backprop_weighted_losses(self.config['train']['lambda']['netD'], aux_over_ths=True)
+        self.optBase.zero_grad()
+        self.optG.zero_grad()
+
+        for param in self.netDImg.parameters():
+            param.requires_grad = False
+        for param in self.netDSem.parameters():
+            param.requires_grad = False
+        for param in self.netDFeat.parameters():
+            param.requires_grad = False
+
+        self.bloss_Clf = loss_calc(pred[ :self.num_source*self.batch_size].to(self.gpu0),
+                                   labels)
+
+        DFeatlogit = self.netDFeat(Dfeature.to(self.gpu_map['netDFeat']))
+        DSemlogit = self.netDSem(pred.to(self.gpu_map['netDSem']))
+        self.bloss_AdvFeat = torch.nn.BCEWithLogitsLoss()(DFeatlogit,
+                                                        self._fake_domain_label(DFeatlogit, 'Feat'))
+        self.bloss_AdvImg = torch.nn.BCEWithLogitsLoss()(DSemlogit,
+                                                       self._fake_domain_label(DSemlogit, 'Sem'))
+
+        fake_logit, dcls_logit, aux_logit = self.netDImg(trsfakeImg.to(self.gpu_map['netDImg']))
+        self.bGloss_fake = self.gan_loss(fake_logit,
+                                    Variable(torch.FloatTensor(fake_logit.data.size()).fill_(self.real_label))
+                                    .cuda(self.gpu_map['netDImg']))
+        self.bGloss_idt = torch.mean(torch.abs(images - idtfakeImg.to(self.gpu0)))
+        self.bGloss_cyc = torch.mean(torch.abs(images - cycfakeImg.to(self.gpu0)))
+        self.bGloss_dcls = nn.CrossEntropyLoss()(dcls_logit,
+                                                 self.shuffled_domain_label.to(self.gpu_map['netDImg']))
+        self.bGloss_auxsem = self._aux_semantic_loss(self._interp_5d(aux_logit).to(self.gpu0), labels)
+        # At this moment we don't care about semantic loss of target data
+
         self._backprop_weighted_losses(self.config['train']['lambda']['base_model_netG'],
-                            self.Dloss_auxsem > self.config['train']['aux_sem_thres'])
-
-        self._update_opts()
+                                       self.Dloss_auxsem > self.config['train']['aux_sem_thres'])
+        self.optBase.step()
+        self.optG.step()
 
         # -----------------------------------------------
         # -----------------------------------------------
@@ -401,8 +404,8 @@ class Solver(object):
                         self._save_prediction(sample_path, pd, lb)
 
                 mIoU = per_class_iu(histList)
-                mIoU = round(np.mean(mIoU) * 100, 2)
-                log += "\nAcc: {:.2f}, mIoU: {:.2f}".format(np.mean(acc), mIoU)
+                mIoU = round(np.nanmean(mIoU) * 100, 2)
+                log += "\nAcc: {:.2f}, mIoU: {:.2f}".format(np.mean(accList), mIoU)
                 print(log)
 
             if self.config['exp_setting']['use_tensorboard']:
@@ -420,8 +423,8 @@ class Solver(object):
                     for d_fixed in self._fixed_test_domain_label(num_sample=self.num_domain):
                         feature, _ = self.basemodel(image_fixed.to(self.gpu0))
                         if self.base == 'VGG':
-                            concat1, concat2, concat3, concat4, feature = feature
-                            image_fake, _ = self._netVGG(concat1, concat2, concat3, concat4, feature,
+                            concat1, concat2, concat3, concat4, concat5, _ = feature
+                            image_fake = self._netVGG(concat1, concat2, concat3, concat4, concat5,
                                                          d_fixed.to(self.gpu_map['netG']))
                         else:
                             image_fake = self.netG(feature.to(self.gpu_map['netG']), d_fixed.to(self.gpu_map['netG']))
@@ -461,7 +464,7 @@ class Solver(object):
                 _, target_pred = self.basemodel(target_images)
 
                 if torch.isnan(target_pred).any(): raise ValueError
-                target_pred = self._interp_target(target_pred).max(1)[1].data.cpu().numpy()
+                target_pred = self._interp(target_pred).max(1)[1].data.cpu().numpy()
                 target_labels = target_labels.data.cpu().numpy()
 
                 for j, (pd, lb) in enumerate(zip(target_pred, target_labels)):

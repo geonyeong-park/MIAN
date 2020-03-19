@@ -9,47 +9,51 @@ from model.deeplab_res import Classifier_Module
 
 
 class VGGMulti(nn.Module):
-    def __init__(self, num_classes=19):
+    def __init__(self, num_classes=19, vgg16_path=None):
         super(VGGMulti, self).__init__()
 
         self.num_classes = num_classes
         self.pool = nn.MaxPool2d(2, 2)
-        self.encoder = torchvision.models.vgg16(pretrained=True).features
+        #encoder = torchvision.models.vgg16(pretrained=True).features
+        vgg = torchvision.models.vgg16()
+        vgg.load_state_dict(torch.load(vgg16_path))
+        encoder = vgg.features
+
         for i in [24, 26, 28]:
-            self.encoder[i].dilation = (2,2)
-            self.encoder[i].padding = (2,2)
+            encoder[i].dilation = (2,2)
+            encoder[i].padding = (2,2)
 
         self.relu = nn.ReLU(inplace=True)
 
-        self.conv1 = nn.Sequential(self.encoder[0],
+        self.conv1 = nn.Sequential(encoder[0],
                                    self.relu,
-                                   self.encoder[2],
+                                   encoder[2],
                                    self.relu)
 
-        self.conv2 = nn.Sequential(self.encoder[5],
+        self.conv2 = nn.Sequential(encoder[5],
                                    self.relu,
-                                   self.encoder[7],
+                                   encoder[7],
                                    self.relu)
 
-        self.conv3 = nn.Sequential(self.encoder[10],
+        self.conv3 = nn.Sequential(encoder[10],
                                    self.relu,
-                                   self.encoder[12],
+                                   encoder[12],
                                    self.relu,
-                                   self.encoder[14],
+                                   encoder[14],
                                    self.relu)
 
-        self.conv4 = nn.Sequential(self.encoder[17],
+        self.conv4 = nn.Sequential(encoder[17],
                                    self.relu,
-                                   self.encoder[19],
+                                   encoder[19],
                                    self.relu,
-                                   self.encoder[21],
+                                   encoder[21],
                                    self.relu)
 
-        self.conv5 = nn.Sequential(self.encoder[24],
+        self.conv5 = nn.Sequential(encoder[24],
                                    self.relu,
-                                   self.encoder[26],
+                                   encoder[26],
                                    self.relu,
-                                   self.encoder[28],
+                                   encoder[28],
                                    self.relu)
 
         self.expansion = nn.Sequential(*[
@@ -69,11 +73,11 @@ class VGGMulti(nn.Module):
         conv2 = self.conv2(self.pool(conv1))
         conv3 = self.conv3(self.pool(conv2))
         conv4 = self.conv4(self.pool(conv3))
-        conv5 = self.conv5(self.pool(conv4))  # conv5 is not pooled at this moment
-        feature = [conv1, conv2, conv3, conv4, conv5]
+        conv5 = self.conv5(conv4)  # conv5 is not pooled at this moment
 
         h = self.expansion(conv5)
         pred = self.deeplab(h)
+        feature = [conv1, conv2, conv3, conv4, conv5, h]
         return feature, pred
 
     def get_1x_lr_params_NOscale(self):
@@ -113,10 +117,10 @@ class VGGMulti(nn.Module):
 
     def optim_parameters(self, lr):
         return [{'params': self.get_1x_lr_params_NOscale(), 'lr': lr},
-                {'params': self.get_10x_lr_params(), 'lr': 10 * lr}]
+                {'params': self.get_10x_lr_params(), 'lr': lr}]
 
 
-def DeeplabVGG(num_classes=21):
-    model = VGGMulti(num_classes)
+def DeeplabVGG(num_classes=21, vgg16_path=None):
+    model = VGGMulti(num_classes, vgg16_path)
     return model
 

@@ -119,10 +119,9 @@ class MultiDomainLoader(object):
         shuffle = self.shuffle
         num_workers = self.num_workers
         assert num_workers == 1
-        if not target:
-            collate_fn = lambda batch: augment_collate(batch, crop=self.crop_size,
-                    halfcrop=self.half_crop, flip=True)
-        else:
+        collate_fn = lambda batch: augment_collate(batch, crop=None, halfcrop=None, flip=True)
+
+        if target:
             collate_fn=torch.utils.data.dataloader.default_collate
             train_sampler = torch.utils.data.distributed.DistributedSampler(self.target_valid_dataset,
                                                                             num_replicas=self.num_processes,

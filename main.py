@@ -18,6 +18,8 @@ from model.generator_vgg import GeneratorVGG
 from dataset.multiloader import MultiDomainLoader
 import horovod.torch as hvd
 
+vgg16_path = './vgg16-00b39a1b-updated.pth'
+
 def get_arguments():
     """Parse all the arguments provided from the CLI.
 
@@ -59,10 +61,11 @@ def main(config, args):
     gpu = args.gpu
     gpu_map = {
         'basemodel': 'cuda:0',
-        'netDImg': 'cuda:2',
-        'netDSem': 'cuda:2',
-        'netDFeat': 'cuda:2',
+        'netDImg': 'cuda:3',
+        'netDSem': 'cuda:3',
+        'netDFeat': 'cuda:3',
         'netG': 'cuda:1',
+        'netG_2': 'cuda:2',
         'all_order': gpu
     }
 
@@ -101,17 +104,17 @@ def main(config, args):
     if base == 'ResNet':
         basemodel = DeeplabRes(num_classes=num_classes)
     elif base == 'VGG':
-        basemodel = DeeplabVGG(num_classes=num_classes)
+        basemodel = DeeplabVGG(num_classes=num_classes, vgg16_path=vgg16_path)
     basemodel.to(gpu_map['basemodel'])
 
     netDImg = IMGDiscriminator(image_size=cropped_size, conv_dim=D_convdim_img, repeat_num=D_repeat_img,
-                               semantic_mask=False, channel=3, num_domain=num_domain, num_classes=num_classes)
+                               channel=3, num_domain=num_domain, num_classes=num_classes)
     netDSem = SEMDiscriminator(conv_dim=D_convdim_sem, repeat_num=D_repeat_sem,
                                channel=num_classes, num_domain=num_domain)
     if base == 'ResNet':
         netDFeat = FCDiscriminator(num_features=2048, ndf=1024, num_domain=num_domain)
     elif base == 'VGG':
-        netDFeat = FCDiscriminator(num_features=512, ndf=512, num_domain=num_domain)
+        netDFeat = FCDiscriminator(num_features=1024, ndf=512, num_domain=num_domain)
 
     netDImg.to(gpu_map['netDImg'])
     netDSem.to(gpu_map['netDSem'])
@@ -122,9 +125,7 @@ def main(config, args):
                         num_domain=num_domain, norm=G_norm, gpu=gpu_map['netG'])
     elif base == 'VGG':
         netG = GeneratorVGG(num_filters=G_convdim, num_domain=num_domain,
-                            norm=G_norm, gpu=gpu_map['netG'])
-
-    netG.to(gpu_map['netG'])
+                            norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'])
 
     # ------------------------
     # 2. Create DataLoader
@@ -141,40 +142,44 @@ def main(config, args):
     # ------------------------
 
     optBase_batches_per_allreduce = 8
+    base_lr = base_lr*num_processes*optBase_batches_per_allreduce
     optBase = optim.Adam(basemodel.optim_parameters(base_lr),
-                        lr=base_lr*num_processes*optBase_batches_per_allreduce,
                          betas=(base_momentum, 0.99), weight_decay=weight_decay)
     optBase = hvd.DistributedOptimizer(optBase,
                                        named_parameters=basemodel.named_parameters(),
                                        backward_passes_per_step=optBase_batches_per_allreduce)
 
     optDImg_batches_per_allreduce = 3
+    DImg_lr = D_lr*num_processes*optDImg_batches_per_allreduce
+
     optDImg = optim.Adam(netDImg.parameters(),
-                        lr=D_lr*num_processes*optDImg_batches_per_allreduce,
-                         betas=(D_momentum, 0.99), weight_decay=weight_decay)
+                        lr=DImg_lr, betas=(D_momentum, 0.99), weight_decay=weight_decay)
     optDImg = hvd.DistributedOptimizer(optDImg,
                                        named_parameters=netDImg.named_parameters(),
                                        backward_passes_per_step=optDImg_batches_per_allreduce)
 
+    DSem_lr = D_lr*num_processes
     optDSem = optim.Adam(netDSem.parameters(),
-                        lr=D_lr*num_processes, betas=(D_momentum, 0.99), weight_decay=weight_decay)
+                        lr=DSem_lr, betas=(D_momentum, 0.99), weight_decay=weight_decay)
     optDSem = hvd.DistributedOptimizer(optDSem,
                                        named_parameters=netDSem.named_parameters())
 
+    DFeat_lr = D_lr*num_processes
     optDFeat = optim.Adam(netDFeat.parameters(),
-                        lr=D_lr*num_processes, betas=(D_momentum, 0.99), weight_decay=weight_decay)
+                        lr=DFeat_lr, betas=(D_momentum, 0.99), weight_decay=weight_decay)
     optDFeat = hvd.DistributedOptimizer(optDFeat,
                                        named_parameters=netDFeat.named_parameters())
 
     optG_batches_per_allreduce = 5
+    G_lr = G_lr*num_processes*optG_batches_per_allreduce
     optG = optim.Adam(netG.parameters(),
-                      lr=G_lr*num_processes*optG_batches_per_allreduce,
-                      betas=(G_momentum, 0.99), weight_decay=weight_decay)
+                      lr=G_lr, betas=(G_momentum, 0.99), weight_decay=weight_decay)
     optG = hvd.DistributedOptimizer(optG,
                                     named_parameters=netG.named_parameters(),
                                     backward_passes_per_step=optG_batches_per_allreduce)
 
     solver = Solver(base, basemodel, netDImg, netDSem, netDFeat, netG, loader, TargetLoader,
+                    base_lr, DImg_lr, DSem_lr, DFeat_lr, G_lr,
                     optBase, optDImg, optDSem, optDFeat, optG, config, args, gpu_map)
 
     # ------------------------

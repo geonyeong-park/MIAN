@@ -42,6 +42,7 @@ class ResidualBlock(nn.Module):
                 spectral_norm(self.conv1),
                 self.a1,
                 spectral_norm(self.conv2),
+                self.a1
             ])
 
         else:
@@ -52,7 +53,7 @@ class ResidualBlock(nn.Module):
             assert cls is not None
             x = self.conv1(input)
             x = self.a1(self.norm1(x, cls))
-            x = self.norm2(self.conv2(x), cls)
+            x = self.a1(self.norm2(self.conv2(x), cls))
         elif self.norm == 'SN':
             x = self.block(input)
         return input + x
