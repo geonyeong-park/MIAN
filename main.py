@@ -114,7 +114,7 @@ def main(config, args):
     if base == 'ResNet':
         netDFeat = FCDiscriminator(num_features=2048, ndf=1024, num_domain=num_domain)
     elif base == 'VGG':
-        netDFeat = FCDiscriminator(num_features=1024, ndf=512, num_domain=num_domain)
+        netDFeat = FCDiscriminator(num_features=1024, ndf=256, num_domain=num_domain)
 
     netDImg.to(gpu_map['netDImg'])
     netDSem.to(gpu_map['netDSem'])
@@ -141,7 +141,7 @@ def main(config, args):
     # 3. Create Optimizer and Solver
     # ------------------------
 
-    optBase_batches_per_allreduce = 8
+    optBase_batches_per_allreduce = 2
     base_lr = base_lr*num_processes*optBase_batches_per_allreduce
     optBase = optim.Adam(basemodel.optim_parameters(base_lr),
                          betas=(base_momentum, 0.99), weight_decay=weight_decay)
@@ -149,7 +149,7 @@ def main(config, args):
                                        named_parameters=basemodel.named_parameters(),
                                        backward_passes_per_step=optBase_batches_per_allreduce)
 
-    optDImg_batches_per_allreduce = 3
+    optDImg_batches_per_allreduce = 2
     DImg_lr = D_lr*num_processes*optDImg_batches_per_allreduce
 
     optDImg = optim.Adam(netDImg.parameters(),
@@ -170,7 +170,7 @@ def main(config, args):
     optDFeat = hvd.DistributedOptimizer(optDFeat,
                                        named_parameters=netDFeat.named_parameters())
 
-    optG_batches_per_allreduce = 5
+    optG_batches_per_allreduce = 3
     G_lr = G_lr*num_processes*optG_batches_per_allreduce
     optG = optim.Adam(netG.parameters(),
                       lr=G_lr, betas=(G_momentum, 0.99), weight_decay=weight_decay)

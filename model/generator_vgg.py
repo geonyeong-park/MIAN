@@ -15,6 +15,7 @@ class DecoderBlock(nn.Module):
         self.upsample = upsample
 
         self.conv = nn.Conv2d(in_channels+num_domain, middle_channels, kernel_size=3, stride=1, padding=1, bias=False).to(gpu) #Concat domain code everytime
+        self.cn = ConditionalBatchOrInstanceNorm2d(middle_channels, num_domain, norm).to(gpu)
         self.relu = nn.ReLU(inplace=True).to(gpu)
         self.block = ResidualBlock(middle_channels, middle_channels, num_domain, norm).to(gpu)
 
@@ -31,6 +32,7 @@ class DecoderBlock(nn.Module):
     def forward(self, x, c):
         h = self._tile_domain_code(x, c)
         h = self.conv(h)
+        h = self.cn(h, c)
         h = self.relu(h)
         h = self.block(h, c)
         if self.upsample:
@@ -52,7 +54,7 @@ class GeneratorVGG(nn.Module):
         self.center = DecoderBlock(512, num_filters * 8 * 2, num_filters * 8, num_domain, norm, gpu)
         self.dec5 = DecoderBlock(512 + num_filters * 8, num_filters * 8, num_filters * 8, num_domain, norm, gpu, upsample=False)
         self.dec4 = DecoderBlock(512 + num_filters * 8, num_filters * 4, num_filters * 4, num_domain, norm, gpu)
-        self.dec3 = DecoderBlock(256 + num_filters * 4, num_filters * 2, num_filters * 2, num_domain, norm, gpu2)
+        self.dec3 = DecoderBlock(256 + num_filters * 4, num_filters * 2, num_filters * 2, num_domain, norm, gpu)
         self.dec2 = DecoderBlock(128 + num_filters * 2, num_filters * 1, num_filters * 1, num_domain, norm, gpu2)
         self.dec1 = nn.Conv2d(64 + num_filters * 1, num_filters, kernel_size=3,padding=1).to(gpu2)
         self.relu = nn.ReLU(inplace=True).to(gpu2)
@@ -65,9 +67,11 @@ class GeneratorVGG(nn.Module):
         center = self.center(self.pool(conv5), c)
         dec5 = self.dec5(torch.cat([center, conv5], 1), c)
         dec4 = self.dec4(torch.cat([dec5, conv4], 1), c)
-        dec4 = dec4.to(self.gpu2)
-        c = c.to(self.gpu2)
         dec3 = self.dec3(torch.cat([dec4, conv3], 1), c)
+
+        dec3 = dec3.to(self.gpu2)
+        c = c.to(self.gpu2)
+
         dec2 = self.dec2(torch.cat([dec3, conv2], 1), c)
         dec1 = self.dec1(torch.cat([dec2, conv1], 1))
 

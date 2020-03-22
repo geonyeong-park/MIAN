@@ -23,34 +23,38 @@ train:
   batch_size: 1
 
   base_model:
-    lr: 0.00025
+    lr: 0.00001
     momentum: 0.9
   netD:
-    lr: 0.00005
-    momentum: 0.9
+    lr: 0.0001
+    momentum: 0.7
   netG:
-    lr: 0.00005
-    momentum: 0.9
+    lr: 0.00001
+    momentum: 0.7
   lr_decay_power: 0.9
   weight_decay: 0.0005
   aux_sem_thres: 1.5
 
   lambda:
-    base_model_netG:
+    base_model:
       bloss_Clf: 1.
-      bloss_AdvFeat: 0.
-      bloss_AdvImg: 0.
-      bGloss_fake: 0. 
-      bGloss_idt: 0. 
-      bGloss_cyc: 0. # Semantic Segmentation에서는 classification loss가 크므로, 0.5~1까지는 키워줘야할 듯
-      bGloss_dcls: 0.
-      bGloss_auxsem: 0.
+      bloss_AdvFeat: 0.05
+      bloss_AdvImg: 0.1
+    base_model_netG:
+      bGloss_fake: 0.02
+      bGloss_idt: 0.
+      bGloss_cyc: 0.1 # Semantic Segmentation에서는 classification loss가 크므로, 0.5~1까지는 키워줘야할 듯
+      bGloss_dcls: 0.1
+      bGloss_auxsem: 0.05
     netD:
       Dloss_fakereal: 1.
       Dloss_dcls: 10.
       Dloss_auxsem: 1.
 
-  GAN: 'LS'
+  GAN: 
+    model: 'WGAN_GP'
+    GP: 10
+    n_critic: 5
   base: 'VGG'  # VGG or ResNet
 
 
@@ -58,10 +62,10 @@ model:
   netD:
     conv_dim: 
       img: 64
-      sem: 64
+      sem: 128
     repeat_num:   # For downsampling (Remind PatchGAN)
       img: 6
-      sem: 6
+      sem: 3
   netG:
     conv_dim: 
       ResNet: 64

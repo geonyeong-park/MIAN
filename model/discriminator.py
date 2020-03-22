@@ -18,15 +18,13 @@ class FCDiscriminator(nn.Module):
         curr_dim = ndf
         compress.append(nn.Conv2d(num_features, curr_dim, kernel_size=4, stride=2, padding=1))
         compress.append(self.leaky_relu)
-
-        for i in range(3):
-            compress.append(nn.Conv2d(curr_dim, curr_dim // 2, kernel_size=4, stride=2, padding=1))
-            compress.append(self.leaky_relu)
-            curr_dim = curr_dim // 2
+        compress.append(nn.Dropout(0.5))
+        compress.append(nn.Conv2d(curr_dim, curr_dim // 2, kernel_size=4, stride=2, padding=1))
+        compress.append(self.leaky_relu)
+        compress.append(nn.Dropout(0.5))
+        compress.append(nn.Conv2d(curr_dim // 2, num_domain, kernel_size=3, stride=1, padding=1, bias=False))
 
         self.compress = nn.Sequential(*compress)
-        #self.up_sample = nn.Upsample(scale_factor=32, mode='bilinear')
-        #self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
         h = self.compress(x)
@@ -41,7 +39,6 @@ class IMGDiscriminator(nn.Module):
             nn.LeakyReLU(0.01),
             ResidualBlock(conv_dim, conv_dim, norm='SN'),
             ResidualBlock(conv_dim, conv_dim, norm='SN'),
-            ResidualBlock(conv_dim, conv_dim, norm='SN'),
         ]
 
 
@@ -50,13 +47,11 @@ class IMGDiscriminator(nn.Module):
             nn.LeakyReLU(0.01),
             ResidualBlock(conv_dim*2, conv_dim*2, norm='SN'),
             ResidualBlock(conv_dim*2, conv_dim*2, norm='SN'),
-            ResidualBlock(conv_dim*2, conv_dim*2, norm='SN'),
         ]
 
         init_block3 = [
             spectral_norm(nn.Conv2d(conv_dim*2, conv_dim*4, kernel_size=4, stride=2, padding=1)),
             nn.LeakyReLU(0.01),
-            ResidualBlock(conv_dim*4, conv_dim*4, norm='SN'),
             ResidualBlock(conv_dim*4, conv_dim*4, norm='SN'),
             ResidualBlock(conv_dim*4, conv_dim*4, norm='SN'),
         ]
@@ -111,6 +106,7 @@ class SEMDiscriminator(nn.Module):
             next_dim = next_dim * 2 if not next_dim > 1000 else next_dim
             downsample.append(nn.Conv2d(curr_dim, next_dim, kernel_size=4, stride=2, padding=1))
             downsample.append(nn.LeakyReLU(0.01))
+            downsample.append(nn.Dropout(0.5))
             curr_dim = next_dim
 
         self.downsample = nn.Sequential(*downsample)

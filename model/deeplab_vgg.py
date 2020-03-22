@@ -14,10 +14,7 @@ class VGGMulti(nn.Module):
 
         self.num_classes = num_classes
         self.pool = nn.MaxPool2d(2, 2)
-        #encoder = torchvision.models.vgg16(pretrained=True).features
-        vgg = torchvision.models.vgg16()
-        vgg.load_state_dict(torch.load(vgg16_path))
-        encoder = vgg.features
+        encoder = torchvision.models.vgg16(pretrained=True).features
 
         for i in [24, 26, 28]:
             encoder[i].dilation = (2,2)

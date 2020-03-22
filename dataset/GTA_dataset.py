@@ -15,8 +15,7 @@ class GTADataSet(data.Dataset):
     def __init__(self, root, list_path, base_transform=None, resize=(1024, 512), ignore_label=255):
         self.root = root
         self.list_path = list_path
-        #self.resize = resize
-        self.resize = (resize[1],resize[0])
+        self.resize = resize
         self.ignore_label = ignore_label
         self.img_ids = sorted([i_id.strip() for i_id in open(os.path.join(list_path, 'train_img.txt'))])
         self.files = []
@@ -48,27 +47,6 @@ class GTADataSet(data.Dataset):
 
     def __getitem__(self, index):
         datafiles = self.files[index]
-        image = Image.open(datafiles["img"]).convert('RGB')
-        label = Image.open(datafiles["label"])
-        # resize
-        image = image.resize(self.resize, Image.BICUBIC)
-        label = label.resize(self.resize, Image.NEAREST)
-        image = np.asarray(image, np.float32)
-        label = np.asarray(label, np.float32)
-        # re-assign labels to match the format of Cityscapes
-        label_copy = 255 * np.ones(label.shape, dtype=np.float32)
-        for k, v in self.id_to_trainid.items():
-            label_copy[label == k] = v
-        size = image.shape
-        image = image[:, :, ::-1]  # change to BGR
-        image -= self.mean
-        image = image.transpose((2, 0, 1))
-        image = torch.from_numpy(np.array(image.copy(), np.float32, copy=False))
-        return image, to_tensor_raw(label_copy.copy())
-
-"""
-    def __getitem__(self, index):
-        datafiles = self.files[index]
 
         image = Image.open(datafiles["img"]).convert('RGB')
         label = Image.open(datafiles["label"])
@@ -83,4 +61,3 @@ class GTADataSet(data.Dataset):
         label = self.label_transform(label)
 
         return image, label
-"""
