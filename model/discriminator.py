@@ -6,29 +6,6 @@ import numpy as np
 from model.generator_res import ResidualBlock
 from model.deeplab_res import Classifier_Module
 
-class FCDiscriminator(nn.Module):
-    def __init__(self, num_features=2048, ndf=1024, num_domain=3):
-        """
-        employed into hidden feature discrimination
-        """
-        super(FCDiscriminator, self).__init__()
-        self.leaky_relu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
-
-        compress = []
-        curr_dim = ndf
-        compress.append(nn.Conv2d(num_features, curr_dim, kernel_size=4, stride=2, padding=1))
-        compress.append(self.leaky_relu)
-        compress.append(nn.Dropout(0.5))
-        compress.append(nn.Conv2d(curr_dim, curr_dim // 2, kernel_size=4, stride=2, padding=1))
-        compress.append(self.leaky_relu)
-        compress.append(nn.Dropout(0.5))
-        compress.append(nn.Conv2d(curr_dim // 2, num_domain, kernel_size=3, stride=1, padding=1, bias=False))
-
-        self.compress = nn.Sequential(*compress)
-
-    def forward(self, x):
-        h = self.compress(x)
-        return h
 
 class IMGDiscriminator(nn.Module):
     def __init__(self, image_size=512, conv_dim=128, channel=3, repeat_num=7, num_domain=3, num_classes=19):
@@ -95,7 +72,7 @@ class IMGDiscriminator(nn.Module):
 
 
 class SEMDiscriminator(nn.Module):
-    def __init__(self, conv_dim=32, channel=3, repeat_num=7, num_domain=3):
+    def __init__(self, conv_dim=32, channel=3, repeat_num=7, num_domain=3, feat=False):
         super(SEMDiscriminator, self).__init__()
 
         downsample = []
@@ -103,16 +80,21 @@ class SEMDiscriminator(nn.Module):
         curr_dim = channel
 
         for i in range(repeat_num):
-            next_dim = next_dim * 2 if not next_dim > 1000 else next_dim
             downsample.append(nn.Conv2d(curr_dim, next_dim, kernel_size=4, stride=2, padding=1))
             downsample.append(nn.LeakyReLU(0.01))
-            downsample.append(nn.Dropout(0.5))
+            #downsample.append(nn.Dropout(0.5))
             curr_dim = next_dim
+            if not feat:
+                next_dim = next_dim * 2 if not next_dim > 2000 else next_dim
+            else:
+                next_dim = next_dim // 2 if not next_dim < 60 else next_dim
+
 
         self.downsample = nn.Sequential(*downsample)
-        self.conv_domain_cls_patch = nn.Conv2d(next_dim, num_domain, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv_domain_cls_patch = nn.Conv2d(curr_dim, num_domain, kernel_size=4, stride=2, padding=1, bias=False)
 
     def forward(self, x):
         h = self.downsample(x)
         out_src = self.conv_domain_cls_patch(h)
         return out_src
+
