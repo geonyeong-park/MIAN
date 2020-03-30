@@ -9,9 +9,9 @@ import numpy as np
 from dataset.transforms import augment_collate
 
 class MultiDomainLoader(object):
-    def __init__(self, dataset, rootdir, resize, crop_size=None,
+    def __init__(self, dataset, rootdir, resize,
                  batch_size=1, shuffle=False, num_workers=2, half_crop=None,
-                 num_processes=2, rank=0):
+                 num_processes=2, rank=0, task='segmentation'):
         """
         dataset: list of domains, ['Cityscapes', 'GTA5', ...]
         rootdir: root for data folders
@@ -31,13 +31,13 @@ class MultiDomainLoader(object):
             ]
         self.dataset = dataset
         self.resize = resize
-        self.crop_size = crop_size
         self.half_crop = half_crop
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.num_workers = num_workers
         self.num_processes = num_processes
         self.rank = rank
+        self.task = task
 
         datadir = os.path.join(rootdir, 'data')
         txtdir = os.path.join(rootdir, 'dataset')
@@ -46,8 +46,8 @@ class MultiDomainLoader(object):
 
         for source in self.dataset[:-1]:
             module = importlib.import_module('dataset.{}_dataset'.format(source))
-            datadir_ = os.path.join(datadir, source)
-            txtdir_ = os.path.join(txtdir, '{}_list'.format(source))
+            datadir_ = os.path.join(datadir, source) if task == 'segmentation' else '{}/office/{}/images'.format(datadir, source.lower())
+            txtdir_ = os.path.join(txtdir, '{}_list'.format(source)) if task == 'segmentation' else None
 
             source_ = getattr(module, '{}DataSet'.format(source))(datadir_, txtdir_,
                                                                   resize=self.resize,
@@ -56,7 +56,7 @@ class MultiDomainLoader(object):
 
         target = self.dataset[-1]
         module = importlib.import_module('dataset.{}_dataset'.format(target))
-        datadir_ = os.path.join(datadir, target)
+        datadir_ = os.path.join(datadir, target) if task == 'segmentation' else '{}/office/{}/images'.format(datadir, target.lower())
         txtdir_ = os.path.join(txtdir, '{}_list'.format(target))
         target_ = getattr(module, '{}DataSet'.format(target))(datadir_, txtdir_,
                                                             resize=self.resize,
@@ -119,6 +119,7 @@ class MultiDomainLoader(object):
         shuffle = self.shuffle
         num_workers = self.num_workers
         assert num_workers == 1
+
         collate_fn = lambda batch: augment_collate(batch, crop=None, halfcrop=None, flip=True)
 
         if target:
@@ -127,7 +128,7 @@ class MultiDomainLoader(object):
                                                                             num_replicas=self.num_processes,
                                                                             rank=self.rank)
             loader_tgt = torch.utils.data.DataLoader(self.target_valid_dataset,
-                    batch_size=batch_size, num_workers=num_workers,
+                    batch_size=batch_size, num_workers=num_workers, drop_last=True,
                     collate_fn=collate_fn, pin_memory=True, sampler=train_sampler)
             return loader_tgt
 
@@ -136,7 +137,7 @@ class MultiDomainLoader(object):
                                                                             num_replicas=self.num_processes,
                                                                             rank=self.rank)
             loader_src = torch.utils.data.DataLoader(s,
-                    batch_size=batch_size, num_workers=num_workers,
+                    batch_size=batch_size, num_workers=num_workers, drop_last=True,
                     collate_fn=collate_fn, pin_memory=True, sampler=train_sampler)
             loader_list.append((loader_src))
         self.loader_list = loader_list

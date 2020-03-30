@@ -7,11 +7,11 @@ exp_setting:
 
 
 data:
-  input_size: '512,1024'
-  crop_size: 512
-  num_classes: 19
-  source: ['GTA']
-  target: 'Cityscapes'
+  input_size: '320,320'
+  crop_size: 64
+  num_classes: 31
+  source: ['Webcam', 'DSLR']
+  target: 'Amazon'
   num_domain: 2
   num_workers: 1
   ignore_label: 255
@@ -20,7 +20,7 @@ data:
 train:
   num_steps: 250000
   num_steps_stop: 150000
-  batch_size: 1
+  batch_size: 32
 
   base_model:
     lr: 0.00001
@@ -38,8 +38,7 @@ train:
   lambda:
     base_model:
       bloss_Clf: 1.
-      bloss_AdvFeat: 0.05
-      bloss_AdvImg: 0.1
+      bloss_AdvFeat: 0.1
     base_model_netG:
       bGloss_fake: 0.02
       bGloss_idt: 0.
@@ -61,11 +60,9 @@ train:
 model:
   netD:
     conv_dim: 
-      img: 64
-      sem: 128
+      img: 128
     repeat_num:   # For downsampling (Remind PatchGAN)
-      img: 6
-      sem: 3
+      img: 5
   netG:
     conv_dim: 
       ResNet: 64

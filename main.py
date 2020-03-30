@@ -12,7 +12,7 @@ import random
 from solver import Solver
 from model.deeplab_res import DeeplabRes
 from model.deeplab_vgg import DeeplabVGG
-from model.discriminator import FCDiscriminator, IMGDiscriminator, SEMDiscriminator
+from model.discriminator import IMGDiscriminator, SEMDiscriminator
 from model.generator_res import GeneratorRes
 from model.generator_vgg import GeneratorVGG
 from dataset.multiloader import MultiDomainLoader
@@ -61,16 +61,14 @@ def main(config, args):
     gpu = args.gpu
     gpu_map = {
         'basemodel': 'cuda:0',
-        'netDImg': 'cuda:3',
-        'netDSem': 'cuda:3',
-        'netDFeat': 'cuda:3',
+        'netDImg': 'cuda:0',
+        'netDFeat': 'cuda:0',
         'netG': 'cuda:1',
-        'netG_2': 'cuda:2',
+        'netG_2': 'cuda:1',
         'all_order': gpu
     }
 
     num_classes = config['data']['num_classes']
-    input_size = config['data']['input_size']
     cropped_size = config['data']['crop_size']
     dataset = config['data']['source'] + [config['data']['target']]
     num_workers = config['data']['num_workers']
@@ -89,9 +87,7 @@ def main(config, args):
 
 
     D_convdim_img = config['model']['netD']['conv_dim']['img']
-    D_convdim_sem = config['model']['netD']['conv_dim']['sem']
     D_repeat_img = config['model']['netD']['repeat_num']['img']
-    D_repeat_sem = config['model']['netD']['repeat_num']['sem']
 
     G_convdim = config['model']['netG']['conv_dim'][base]
     G_norm = config['model']['netG']['norm']
@@ -101,40 +97,26 @@ def main(config, args):
     # 1. Create Model
     # ------------------------
 
-    if base == 'ResNet':
-        basemodel = DeeplabRes(num_classes=num_classes)
-    elif base == 'VGG':
-        basemodel = DeeplabVGG(num_classes=num_classes, vgg16_path=vgg16_path)
+    basemodel = DeeplabVGG(num_classes=num_classes, vgg16_path=vgg16_path)
     basemodel.to(gpu_map['basemodel'])
 
     netDImg = IMGDiscriminator(image_size=cropped_size, conv_dim=D_convdim_img, repeat_num=D_repeat_img,
                                channel=3, num_domain=num_domain, num_classes=num_classes)
-    netDSem = SEMDiscriminator(conv_dim=D_convdim_sem, repeat_num=D_repeat_sem,
-                               channel=num_classes, num_domain=num_domain)
-    if base == 'ResNet':
-        netDFeat = FCDiscriminator(num_features=2048, ndf=1024, num_domain=num_domain)
-    elif base == 'VGG':
-        netDFeat = FCDiscriminator(num_features=1024, ndf=256, num_domain=num_domain)
+    netDFeat = SEMDiscriminator(conv_dim=512, repeat_num=2,
+                                channel=1024, num_domain=num_domain, feat=True)
 
     netDImg.to(gpu_map['netDImg'])
-    netDSem.to(gpu_map['netDSem'])
     netDFeat.to(gpu_map['netDFeat'])
 
-    if base == 'ResNet':
-        netG = GeneratorRes(in_dim=2048, conv_dim=G_convdim, repeat_num=G_repeat_num,
-                        num_domain=num_domain, norm=G_norm, gpu=gpu_map['netG'])
-    elif base == 'VGG':
-        netG = GeneratorVGG(num_filters=G_convdim, num_domain=num_domain,
-                            norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'])
+    netG = GeneratorVGG(num_filters=G_convdim, num_domain=num_domain,
+                        norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'])
 
     # ------------------------
     # 2. Create DataLoader
     # ------------------------
-    w,h = map(int, input_size.split(','))
-    input_size = (w,h)
-    loader = MultiDomainLoader(dataset, '.', input_size, crop_size=cropped_size, batch_size=batch_size,
+    loader = MultiDomainLoader(dataset, '.', cropped_size, batch_size=batch_size,
                                shuffle=True, num_workers=num_workers, half_crop=None,
-                               num_processes=num_processes, rank=hvd.rank())
+                               num_processes=num_processes, rank=hvd.rank(), task='office')
     TargetLoader = loader.TargetLoader
 
     # ------------------------
@@ -149,7 +131,7 @@ def main(config, args):
                                        named_parameters=basemodel.named_parameters(),
                                        backward_passes_per_step=optBase_batches_per_allreduce)
 
-    optDImg_batches_per_allreduce = 2
+    optDImg_batches_per_allreduce = 1
     DImg_lr = D_lr*num_processes*optDImg_batches_per_allreduce
 
     optDImg = optim.Adam(netDImg.parameters(),
@@ -158,19 +140,13 @@ def main(config, args):
                                        named_parameters=netDImg.named_parameters(),
                                        backward_passes_per_step=optDImg_batches_per_allreduce)
 
-    DSem_lr = D_lr*num_processes
-    optDSem = optim.Adam(netDSem.parameters(),
-                        lr=DSem_lr, betas=(D_momentum, 0.99), weight_decay=weight_decay)
-    optDSem = hvd.DistributedOptimizer(optDSem,
-                                       named_parameters=netDSem.named_parameters())
-
     DFeat_lr = D_lr*num_processes
     optDFeat = optim.Adam(netDFeat.parameters(),
                         lr=DFeat_lr, betas=(D_momentum, 0.99), weight_decay=weight_decay)
     optDFeat = hvd.DistributedOptimizer(optDFeat,
                                        named_parameters=netDFeat.named_parameters())
 
-    optG_batches_per_allreduce = 3
+    optG_batches_per_allreduce = 1
     G_lr = G_lr*num_processes*optG_batches_per_allreduce
     optG = optim.Adam(netG.parameters(),
                       lr=G_lr, betas=(G_momentum, 0.99), weight_decay=weight_decay)
@@ -178,9 +154,9 @@ def main(config, args):
                                     named_parameters=netG.named_parameters(),
                                     backward_passes_per_step=optG_batches_per_allreduce)
 
-    solver = Solver(base, basemodel, netDImg, netDSem, netDFeat, netG, loader, TargetLoader,
-                    base_lr, DImg_lr, DSem_lr, DFeat_lr, G_lr,
-                    optBase, optDImg, optDSem, optDFeat, optG, config, args, gpu_map)
+    solver = Solver(base, basemodel, netDImg, netDFeat, netG, loader, TargetLoader,
+                    base_lr, DImg_lr, DFeat_lr, G_lr,
+                    optBase, optDImg, optDFeat, optG, config, args, gpu_map)
 
     # ------------------------
     # 4. Train

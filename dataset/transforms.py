@@ -60,10 +60,11 @@ class RandomHorizontalFlip(object):
     def __call__(self, tensors):
         if random.random() < 0.5:
             output = []
-            for tensor in tensors:
-                indices = torch.arange(tensor.size(-1) - 1, -1, -1).long()
-                output.append(tensor.index_select(-1, indices))
+            indices = torch.arange(tensors[0].size(-1) - 1, -1, -1).long()
+            output.append(tensors[0].index_select(-1, indices))
+            output.append(tensors[1])
             return output
+
         return tensors
 
 

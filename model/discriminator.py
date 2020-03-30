@@ -4,17 +4,16 @@ from torch.nn.utils import spectral_norm
 import torch.nn.functional as F
 import numpy as np
 from model.generator_res import ResidualBlock
-from model.deeplab_res import Classifier_Module
 
 
 class IMGDiscriminator(nn.Module):
     def __init__(self, image_size=512, conv_dim=128, channel=3, repeat_num=7, num_domain=3, num_classes=19):
         super(IMGDiscriminator, self).__init__()
+        self.relu = nn.ReLU(inplace=True)
 
         init_block1 = [
             spectral_norm(nn.Conv2d(channel, conv_dim, kernel_size=4, stride=2, padding=1)),
             nn.LeakyReLU(0.01),
-            ResidualBlock(conv_dim, conv_dim, norm='SN'),
             ResidualBlock(conv_dim, conv_dim, norm='SN'),
         ]
 
@@ -23,13 +22,11 @@ class IMGDiscriminator(nn.Module):
             spectral_norm(nn.Conv2d(conv_dim, conv_dim*2, kernel_size=4, stride=2, padding=1)),
             nn.LeakyReLU(0.01),
             ResidualBlock(conv_dim*2, conv_dim*2, norm='SN'),
-            ResidualBlock(conv_dim*2, conv_dim*2, norm='SN'),
         ]
 
         init_block3 = [
             spectral_norm(nn.Conv2d(conv_dim*2, conv_dim*4, kernel_size=4, stride=2, padding=1)),
             nn.LeakyReLU(0.01),
-            ResidualBlock(conv_dim*4, conv_dim*4, norm='SN'),
             ResidualBlock(conv_dim*4, conv_dim*4, norm='SN'),
         ]
 
@@ -38,12 +35,17 @@ class IMGDiscriminator(nn.Module):
         assert channel == 3
         aux_clf = []
         for i in range(num_domain-1):
-            aux_clf.append(Classifier_Module(curr_dim, [6, 12, 18, 24], [6, 12, 18, 24], num_classes))
+            aux_clf.append(nn.Sequential(*[nn.Conv2d(curr_dim, curr_dim // 2, kernel_size=4,stride=2,padding=1),
+                                        self.relu,
+                                        nn.Conv2d(curr_dim // 2, curr_dim // 4,kernel_size=4,stride=2,padding=1),
+                                        self.relu,
+                                        nn.Conv2d(curr_dim // 4, num_classes, kernel_size=4, stride=2, padding=1)]))
+
         self.aux_clf = nn.ModuleList(aux_clf)
 
         downsample = []
         for i in range(1, repeat_num-2):
-            next_dim = curr_dim * 2 if not curr_dim > 1000 else curr_dim
+            next_dim = curr_dim * 2 if not curr_dim > 2000 else curr_dim
             downsample.append(spectral_norm(nn.Conv2d(curr_dim, next_dim, kernel_size=4, stride=2, padding=1)))
             downsample.append(nn.LeakyReLU(0.01))
             curr_dim = next_dim
@@ -53,6 +55,7 @@ class IMGDiscriminator(nn.Module):
         self.init_block2 = nn.Sequential(*init_block2)
         self.init_block3 = nn.Sequential(*init_block3)
         self.downsample = nn.Sequential(*downsample)
+        self.dropout = nn.Dropout(0.5)
 
         self.conv_real_fake = nn.Conv2d(next_dim, 1, kernel_size=3, stride=1, padding=1, bias=False)
         self.conv_domain_cls = nn.Conv2d(next_dim, num_domain, kernel_size=kernel_size, bias=False)
@@ -64,6 +67,8 @@ class IMGDiscriminator(nn.Module):
 
         out_aux = torch.cat([clf(h).unsqueeze_(0) for clf in self.aux_clf], dim=0)
         h = self.downsample(h)
+        h = self.dropout(h)
+
         out_src = self.conv_real_fake(h)
         out_domain = self.conv_domain_cls(h)
         out_domain = torch.mean(out_domain.view(out_domain.size(0), out_domain.size(1), -1), dim=2)
@@ -80,7 +85,7 @@ class SEMDiscriminator(nn.Module):
         curr_dim = channel
 
         for i in range(repeat_num):
-            downsample.append(nn.Conv2d(curr_dim, next_dim, kernel_size=4, stride=2, padding=1))
+            downsample.append(nn.Linear(curr_dim, next_dim))
             downsample.append(nn.LeakyReLU(0.01))
             #downsample.append(nn.Dropout(0.5))
             curr_dim = next_dim
@@ -89,12 +94,13 @@ class SEMDiscriminator(nn.Module):
             else:
                 next_dim = next_dim // 2 if not next_dim < 60 else next_dim
 
-
+        self.dropout = nn.Dropout(0.5)
         self.downsample = nn.Sequential(*downsample)
-        self.conv_domain_cls_patch = nn.Conv2d(curr_dim, num_domain, kernel_size=4, stride=2, padding=1, bias=False)
+        self.conv_domain_cls_patch = nn.Linear(curr_dim, num_domain)
 
     def forward(self, x):
         h = self.downsample(x)
+        h = self.dropout(h)
         out_src = self.conv_domain_cls_patch(h)
         return out_src
 

@@ -5,7 +5,6 @@ import torch
 import torchvision
 from torchvision import models
 import numpy as np
-from model.deeplab_res import Classifier_Module
 
 
 class VGGMulti(nn.Module):
@@ -15,10 +14,6 @@ class VGGMulti(nn.Module):
         self.num_classes = num_classes
         self.pool = nn.MaxPool2d(2, 2)
         encoder = torchvision.models.vgg16(pretrained=True).features
-
-        for i in [24, 26, 28]:
-            encoder[i].dilation = (2,2)
-            encoder[i].padding = (2,2)
 
         self.relu = nn.ReLU(inplace=True)
 
@@ -53,27 +48,26 @@ class VGGMulti(nn.Module):
                                    encoder[28],
                                    self.relu)
 
-        self.expansion = nn.Sequential(*[
-            nn.Conv2d(512, 1024, kernel_size=3, padding=4, dilation=4),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(1024, 1024, kernel_size=3, padding=4, dilation=4),
-            nn.ReLU(inplace=True)
-        ])
+        self.compress = nn.Conv2d(512, 1024, kernel_size=4, stride=2, padding=1)
+        self.clf = self._make_pred_layer(num_classes)
 
-        self.deeplab = self._make_pred_layer(Classifier_Module, 1024, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
-
-    def _make_pred_layer(self, block, inplanes, dilation_series, padding_series, num_classes):
-        return block(inplanes, dilation_series, padding_series, num_classes)
+    def _make_pred_layer(self, num_classes):
+        return nn.Sequential(*[
+            nn.Linear(1024, 512),
+            self.relu,
+            nn.Linear(512, 256),
+            self.relu,
+            nn.Linear(256, num_classes)])
 
     def forward(self, x):
         conv1 = self.conv1(x)
         conv2 = self.conv2(self.pool(conv1))
         conv3 = self.conv3(self.pool(conv2))
         conv4 = self.conv4(self.pool(conv3))
-        conv5 = self.conv5(conv4)  # conv5 is not pooled at this moment
+        conv5 = self.conv5(self.pool(conv4))  # conv5 is not pooled at this moment
 
-        h = self.expansion(conv5)
-        pred = self.deeplab(h)
+        h = self.relu(self.compress(self.pool(conv5))).view(conv5.size()[0], 1024)
+        pred = self.clf(h)
         feature = [conv1, conv2, conv3, conv4, conv5, h]
         return feature, pred
 
@@ -90,7 +84,7 @@ class VGGMulti(nn.Module):
         b.append(self.conv3)
         b.append(self.conv4)
         b.append(self.conv5)
-        b.append(self.expansion)
+        b.append(self.compress)
 
         for i in range(len(b)):
             for j in b[i].modules():
@@ -106,7 +100,7 @@ class VGGMulti(nn.Module):
         which does the classification of pixel into classes
         """
         b = []
-        b.append(self.deeplab.parameters())
+        b.append(self.clf.parameters())
 
         for j in range(len(b)):
             for i in b[j]:

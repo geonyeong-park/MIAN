@@ -52,11 +52,11 @@ class GeneratorVGG(nn.Module):
         self.gpu2 = gpu2
 
         self.center = DecoderBlock(512, num_filters * 8 * 2, num_filters * 8, num_domain, norm, gpu)
-        self.dec5 = DecoderBlock(512 + num_filters * 8, num_filters * 8, num_filters * 8, num_domain, norm, gpu, upsample=False)
+        self.dec5 = DecoderBlock(512 + num_filters * 8, num_filters * 8, num_filters * 8, num_domain, norm, gpu)
         self.dec4 = DecoderBlock(512 + num_filters * 8, num_filters * 4, num_filters * 4, num_domain, norm, gpu)
         self.dec3 = DecoderBlock(256 + num_filters * 4, num_filters * 2, num_filters * 2, num_domain, norm, gpu)
         self.dec2 = DecoderBlock(128 + num_filters * 2, num_filters * 1, num_filters * 1, num_domain, norm, gpu2)
-        self.dec1 = nn.Conv2d(64 + num_filters * 1, num_filters, kernel_size=3,padding=1).to(gpu2)
+        self.dec1 = nn.Conv2d(64 + num_filters * 1, num_filters, kernel_size=3, padding=1).to(gpu2)
         self.relu = nn.ReLU(inplace=True).to(gpu2)
         self.last_conv = nn.Conv2d(num_filters, 3, kernel_size=1).to(gpu2)
 

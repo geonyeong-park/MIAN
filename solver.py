@@ -20,9 +20,9 @@ import time
 
 
 class Solver(object):
-    def __init__(self, base, basemodel, netDImg, netDSem, netDFeat, netG, loader, TargetLoader,
-                 base_lr, DImg_lr, DSem_lr, DFeat_lr, G_lr,
-                 optBase, optDImg, optDSem, optDFeat, optG, config, args, gpu_map):
+    def __init__(self, base, basemodel, netDImg, netDFeat, netG, loader, TargetLoader,
+                 base_lr, DImg_lr, DFeat_lr, G_lr,
+                 optBase, optDImg, optDFeat, optG, config, args, gpu_map):
         self.args = args
         self.config = config
         self.gpu = args.gpu
@@ -35,21 +35,17 @@ class Solver(object):
         self.base = base
         self.basemodel = basemodel
         self.netDImg = netDImg
-        self.netDSem = netDSem
         self.netDFeat = netDFeat
         self.netG = netG
         self.loader = loader
         self.TargetLoader = TargetLoader
         self.optBase = optBase
         self.optDImg = optDImg
-        self.optDSem = optDSem
         self.optDFeat = optDFeat
         self.optG = optG
         self.gpu_map = gpu_map
-        self.gpu0 = 'cuda:{}'.format(gpu_map['all_order'][0])
+        self.gpu0 = 'cuda:0'
 
-        self.loader = loader
-        self.TargetLoader = TargetLoader
         self.loader_iter = iter(loader)
         self.target_iter = iter(TargetLoader)
         self.num_domain = 1+len(config['data']['source'])
@@ -64,18 +60,14 @@ class Solver(object):
             self.gan_loss= torch.nn.BCEWithLogitsLoss()
         elif config['train']['GAN']['model'] == 'LS':
             self.gan_loss = torch.nn.MSELoss()
-        self.Dgan_loss = torch.nn.MSELoss()
-
-        original_size = config['data']['input_size']
-        w,h = map(int, original_size.split(','))
-        self.original_size = (w,h)
+        #self.Dgan_loss = torch.nn.MSELoss()
+        self.Dgan_loss = torch.nn.BCEWithLogitsLoss()
 
         self.real_label = 0
         self.fake_label = 1
 
         self.base_lr = base_lr
         self.DImg_lr = DImg_lr
-        self.DSem_lr = DSem_lr
         self.DFeat_lr = DFeat_lr
         self.G_lr = G_lr
         self.num_classes = config['data']['num_classes']
@@ -86,10 +78,10 @@ class Solver(object):
 
         self.log_loss = {}
         self.log_lr = {}
-        self.log_step = 100
-        self.sample_step = 100
+        self.log_step = 1000
+        self.sample_step = 1000
         self.val_step = 1000
-        self.save_step = 5000 #5000
+        self.save_step = 1000 #5000
         self.logger = Logger(self.log_dir)
 
     def train(self):
@@ -102,7 +94,6 @@ class Solver(object):
             self.basemodel.train()
             self.netDFeat.train()
             self.netDImg.train()
-            self.netDSem.train()
             self.netG.train()
             self._train_step(i_iter)
 
@@ -116,7 +107,6 @@ class Solver(object):
     def _adjust_lr_opts(self, i_iter):
         self.log_lr['base'] = adjust_learning_rate(self.optBase, self.base_lr, i_iter, self.total_step, self.power)
         self.log_lr['DImg'] = adjust_learning_rate(self.optDImg, self.DImg_lr, i_iter, self.total_step, self.power)
-        self.log_lr['DSem'] = adjust_learning_rate(self.optDSem, self.DSem_lr, i_iter, self.total_step, self.power)
         self.log_lr['DFeat'] = adjust_learning_rate(self.optDFeat, self.DFeat_lr, i_iter, self.total_step, self.power)
         self.log_lr['G'] = adjust_learning_rate(self.optG, self.G_lr, i_iter, self.total_step, self.power)
 
@@ -124,12 +114,10 @@ class Solver(object):
         hvd.broadcast_parameters(self.basemodel.state_dict(), root_rank=0)
         hvd.broadcast_parameters(self.netDFeat.state_dict(), root_rank=0)
         hvd.broadcast_parameters(self.netDImg.state_dict(), root_rank=0)
-        hvd.broadcast_parameters(self.netDSem.state_dict(), root_rank=0)
         hvd.broadcast_parameters(self.netG.state_dict(), root_rank=0)
         hvd.broadcast_optimizer_state(self.optBase, root_rank=0)
         hvd.broadcast_optimizer_state(self.optDFeat, root_rank=0)
         hvd.broadcast_optimizer_state(self.optDImg, root_rank=0)
-        hvd.broadcast_optimizer_state(self.optDSem, root_rank=0)
         hvd.broadcast_optimizer_state(self.optG, root_rank=0)
 
     def _denorm(self, data):
@@ -162,14 +150,6 @@ class Solver(object):
             zeros[self.batch_size*i: self.batch_size*(i+1), i] = 1.
         return zeros.to(self.gpu_map['netD{}'.format(model)])
 
-    def _interp(self, x):
-        interp = nn.Upsample(size=(self.original_size[0], self.original_size[1]), mode='bilinear')
-        return interp(x)
-
-    def _interp_5d(self, x):
-        # each row of 0-dim corresponds to logit from i-th auxiliary semantic classifier
-        return torch.cat([self._interp(ith).unsqueeze(0) for ith in x], dim=0)
-
     def _gradient_penalty(self, real, fake, ld):
         alpha = torch.rand(real.size(0), 1, 1, 1).to(self.gpu_map['netDImg'])
         x_hat = (alpha * real.data + (1 - alpha) * fake.data).requires_grad_(True)
@@ -195,12 +175,16 @@ class Solver(object):
     def _aux_semantic_loss(self, aux_logit_5D, label):
         # aux_logit_5D: (num_source, batch, c, w, h)
         aux_logit = aux_logit_5D.permute(1, 0, 2, 3, 4)
+        N, S, C, _, _ = aux_logit.size()
+        aux_logit = aux_logit.view(N, S, C)
+
         aux_logit_source = aux_logit[ :self.num_source*self.batch_size]
         mask = self.domain_label[ :self.num_source*self.batch_size]
         aux_logit_for_each_target_D = torch.cat(
             [aux_logit_source[i, source_domain].unsqueeze(0) for i, source_domain in enumerate(mask)],
             dim=0)
-        return loss_calc(aux_logit_for_each_target_D, label)
+
+        return nn.CrossEntropyLoss()(aux_logit_for_each_target_D, label)
 
     def _netVGG(self, concat1, concat2, concat3, concat4, feature, domain_label):
         concat1 = concat1.to(self.gpu_map['netG_2'])
@@ -227,11 +211,9 @@ class Solver(object):
         self._adjust_lr_opts(i_iter)
 
         self.optDFeat.synchronize()
-        self.optDSem.synchronize()
         self.optDImg.synchronize()
 
         self.optDFeat.zero_grad()
-        self.optDSem.zero_grad()
         self.optDImg.zero_grad()
 
         """
@@ -294,8 +276,6 @@ class Solver(object):
         if self.base == 'VGG':
             concat1, concat2, concat3, concat4, concat5, Dfeature = feature
 
-        pred = self._interp(pred)
-
 
         """ Idt, Fake, Cycle, DCls, Semantic Loss (Generator) """
         if self.base == 'ResNet':
@@ -310,13 +290,12 @@ class Solver(object):
             concat1, concat2, concat3, concat4, concat5, _ = cycFeat
             cycfakeImg = self._netVGG(concat1, concat2, concat3, concat4, concat5, self.domain_label)
 
+
         # -----------------------------
         # 3. Train Discriminators
         # -----------------------------
 
         for param in self.netDImg.parameters():
-            param.requires_grad = True
-        for param in self.netDSem.parameters():
             param.requires_grad = True
         for param in self.netDFeat.parameters():
             param.requires_grad = True
@@ -324,15 +303,10 @@ class Solver(object):
         """ (FeatD, SemD) """
         # Train with original domain labels
         DFeatlogit = self.netDFeat(Dfeature.detach().to(self.gpu_map['netDFeat']))
-        DSemlogit = self.netDSem(pred.detach().to(self.gpu_map['netDSem']))
         Dloss_AdvFeat = self.Dgan_loss(DFeatlogit,
-                                                     self._real_domain_label(DFeatlogit, 'Feat'))
-        Dloss_AdvSem = self.Dgan_loss(F.softmax(DSemlogit, dim=1),
-                                                    self._real_domain_label(DSemlogit, 'Sem'))
+                                        self._real_domain_label(DFeatlogit, 'Feat'))
         Dloss_AdvFeat.backward()
-        Dloss_AdvSem.backward()
         self.log_loss['Dloss_AdvFeat'] = Dloss_AdvFeat.item()
-        self.log_loss['Dloss_AdvSem'] = Dloss_AdvSem.item()
 
         """ (ImgD) """
         fake_logit, _, _ = self.netDImg(trsfakeImg.detach().to(self.gpu_map['netDImg']))
@@ -344,7 +318,8 @@ class Solver(object):
                                         Variable(torch.FloatTensor(real_logit.data.size()).fill_(self.real_label))
                                         .cuda(self.gpu_map['netDImg']))
         self.Dloss_dcls = nn.CrossEntropyLoss()(dcls_logit, self.domain_label.to(self.gpu_map['netDImg']))
-        self.Dloss_auxsem = self._aux_semantic_loss(self._interp_5d(aux_logit).to(self.gpu0), labels)
+        self.Dloss_auxsem = self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
+
         self.Dloss_gp = self._gradient_penalty(real=images.to(self.gpu_map['netDImg']),
                                                fake=trsfakeImg.detach().to(self.gpu_map['netDImg']),
                                                ld=self.config['train']['GAN']['GP'])
@@ -355,7 +330,6 @@ class Solver(object):
                                        aux_over_ths=True,
                                        retain_graph=True)
         self.optDFeat.step()
-        self.optDSem.step()
         self.optDImg.step()
         # ----------------------------
         # 4. Train Basemodel
@@ -366,20 +340,15 @@ class Solver(object):
 
         for param in self.netDImg.parameters():
             param.requires_grad = False
-        for param in self.netDSem.parameters():
-            param.requires_grad = False
         for param in self.netDFeat.parameters():
             param.requires_grad = False
 
-        self.bloss_Clf = loss_calc(pred[ :self.num_source*self.batch_size].to(self.gpu0),
-                                   labels)
+        self.bloss_Clf = nn.CrossEntropyLoss()(pred[ :self.num_source*self.batch_size].to(self.gpu0),
+                                               labels)
 
         DFeatlogit = self.netDFeat(Dfeature.to(self.gpu_map['netDFeat']))
-        DSemlogit = self.netDSem(pred.to(self.gpu_map['netDSem']))
         self.bloss_AdvFeat = self.Dgan_loss(DFeatlogit,
-                                                        self._fake_domain_label(DFeatlogit, 'Feat'))
-        self.bloss_AdvImg = self.Dgan_loss(F.softmax(DSemlogit, dim=1),
-                                                       self._fake_domain_label(DSemlogit, 'Sem'))
+                                            self._fake_domain_label(DFeatlogit, 'Feat'))
 
         retain = True if (i_iter+1) % self.config['train']['GAN']['n_critic'] == 0 else False
         self._backprop_weighted_losses(self.config['train']['lambda']['base_model'],
@@ -405,7 +374,7 @@ class Solver(object):
             self.bGloss_cyc = torch.mean(torch.abs(images - cycfakeImg.to(self.gpu0)))
             self.bGloss_dcls = nn.CrossEntropyLoss()(dcls_logit,
                                                     self.shuffled_domain_label.to(self.gpu_map['netDImg']))
-            self.bGloss_auxsem = self._aux_semantic_loss(self._interp_5d(aux_logit).to(self.gpu0), labels)
+            self.bGloss_auxsem = self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
             # At this moment we don't care about semantic loss of target data
 
             self._backprop_weighted_losses(self.config['train']['lambda']['base_model_netG'],
@@ -426,21 +395,11 @@ class Solver(object):
                 for tag, value in self.log_loss.items():
                     log += ", {}: {:.4f}".format(tag, value)
                 histList = np.zeros((self.num_classes, self.num_classes))
-                accList = []
                 source_pd = pred.detach().data[:self.batch_size*self.num_source].max(1)[1].cpu().numpy()
                 source_lb = labels.data.cpu().numpy()
+                acc = np.mean(source_pd == source_pd)
 
-                for i, (pd, lb) in enumerate(zip(source_pd, source_lb)):
-                    hist, acc = seg_accuracy(pd, lb, self.num_classes)
-                    histList += hist
-                    accList.append(acc.item() * 100)
-                    if i == 0:
-                        sample_path = os.path.join(self.log_dir, '{}_pred-images.jpg'.format(i_iter+1))
-                        self._save_prediction(sample_path, pd, lb)
-
-                mIoU = per_class_iu(histList)
-                mIoU = round(np.nanmean(mIoU) * 100, 2)
-                log += "\nAcc: {:.2f}, mIoU: {:.2f}".format(np.mean(accList), mIoU)
+                log += "\nAcc: {:.2f}".format(acc)
                 print(log)
 
             if self.config['exp_setting']['use_tensorboard']:
@@ -466,25 +425,24 @@ class Solver(object):
                         image_fake_list.append(image_fake)
                     image_concat = torch.cat(image_fake_list, dim=3)
                     sample_path = os.path.join(self.log_dir, '{}-FixTrsimages.jpg'.format(i_iter+1))
-                    sample_path2 = os.path.join(self.log_dir, '{}_RandomTrs-images.jpg'.format(i_iter+1))
                     save_image(self._denorm(image_concat.data.cpu()), sample_path, nrow=self.num_domain, padding=0)
-                    save_image(self._denorm(trsfakeImg.detach().data.cpu()), sample_path2, nrow=self.num_domain, padding=0)
                     print('Saved real and fake images into {}...'.format(sample_path))
 
             if (i_iter+1) % self.save_step == 0:
                 print('taking snapshot ...')
-                torch.save(self.basemodel.state_dict(), osp.join(self.snapshot_dir, 'basemodel_'+str(i_iter+1)+'.pth'))
-                torch.save(self.netG.state_dict(), osp.join(self.snapshot_dir, 'netG_'+str(i_iter+1)+'.pth'))
-                torch.save(self.netDImg.state_dict(), osp.join(self.snapshot_dir, 'netDImg_'+str(i_iter+1)+'.pth'))
-                torch.save(self.netDFeat.state_dict(), osp.join(self.snapshot_dir, 'netDFeat_'+str(i_iter+1)+'.pth'))
-                torch.save(self.netDSem.state_dict(), osp.join(self.snapshot_dir, 'netDSem_'+str(i_iter+1)+'.pth'))
+                torch.save({
+                    'basemodel': self.basemodel.state_dict(),
+                    'netG': self.netG.state_dict(),
+                    'netDImg': self.netDImg.state_dict(),
+                    'netDFeat': self.netDFeat.state_dict(),
+                }, osp.join(self.snapshot_dir, 'pretrain_'+str(i_iter+1)+'.pth'))
 
     def _validation(self, i_iter):
         accList = []
         histList = np.zeros((self.num_classes, self.num_classes))
         val_iter = 0
 
-        for i in range(500):
+        for i in range(len(self.TargetLoader) // self.batch_size):
             with torch.no_grad():
                 # To be modified
                 target_images, target_labels = next(self.target_iter)
@@ -499,27 +457,14 @@ class Solver(object):
                 _, target_pred = self.basemodel(target_images)
 
                 if torch.isnan(target_pred).any(): raise ValueError
-                target_pred = self._interp(target_pred).max(1)[1].data.cpu().numpy()
+                target_pred = target_pred.max(1)[1].data.cpu().numpy()
                 target_labels = target_labels.data.cpu().numpy()
+                acc = np.mean(target_pred == target_labels)
+                accList.append(acc.item() * 100)
 
-                for j, (pd, lb) in enumerate(zip(target_pred, target_labels)):
-                    hist, acc = seg_accuracy(pd, lb, self.num_classes)
-                    histList += hist
-                    accList.append(acc.item() * 100)
-
-                    if i == 0 and j == 0:
-                        sample_path = os.path.join(self.log_dir, '{}_pred_valid-images.jpg'.format(i_iter+1))
-                        self._save_prediction(sample_path, pd, lb)
-
-        mIoUs = per_class_iu(histList)
-        if math.isnan(np.mean(mIoUs)):
-            warnings.warn('mIoU NaN; {}'.format(mIoUs))
-        mIoUs = round(np.nanmean(mIoUs) * 100, 2)
-        info_str = 'Iteration {}: acc:{:0.2f}, mIoU:{}'.format(i_iter+1,
-                                                               np.mean(accList),
-                                                               mIoUs)
+        info_str = 'Iteration {}: acc:{:0.2f}'.format(i_iter+1,
+                                                      np.mean(accList))
         if hvd.rank() == 0:
             self.logger.scalar_summary('metrics/val_acc', np.mean(accList), i_iter+1)
-            self.logger.scalar_summary('metrics/val_mIoU', mIoUs, i_iter+1)
         print(info_str)
 
