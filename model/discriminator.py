@@ -100,7 +100,7 @@ class SEMDiscriminator(nn.Module):
 
     def forward(self, x):
         h = self.downsample(x)
-        h = self.dropout(h)
+        #h = self.dropout(h)
         out_src = self.conv_domain_cls_patch(h)
         return out_src
 

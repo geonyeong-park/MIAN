@@ -37,14 +37,14 @@ train:
 
   lambda:
     base_model:
-      bloss_Clf: 1.
-      bloss_AdvFeat: 0.1
+      bloss_Clf: 0.
+      bloss_AdvFeat: 0.2
     base_model_netG:
-      bGloss_fake: 0.02
+      bGloss_fake: 0.2
       bGloss_idt: 0.
-      bGloss_cyc: 0.1 # Semantic Segmentation에서는 classification loss가 크므로, 0.5~1까지는 키워줘야할 듯
-      bGloss_dcls: 0.1
-      bGloss_auxsem: 0.05
+      bGloss_cyc: 0.5 # Semantic Segmentation에서는 classification loss가 크므로, 0.5~1까지는 키워줘야할 듯
+      bGloss_dcls: 1.
+      bGloss_auxsem: 0.2
     netD:
       Dloss_fakereal: 1.
       Dloss_dcls: 10.

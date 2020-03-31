@@ -80,13 +80,12 @@ class Solver(object):
         self.log_lr = {}
         self.log_step = 1000
         self.sample_step = 1000
-        self.val_step = 1000
+        self.val_step = 50000
         self.save_step = 1000 #5000
         self.logger = Logger(self.log_dir)
 
     def train(self):
         # Broadcast parameters and optimizer state for every processes
-        self._broadcast_param_opt()
 
         self.start_time = time.time()
 
@@ -210,9 +209,6 @@ class Solver(object):
     def _train_step(self, i_iter):
         self._adjust_lr_opts(i_iter)
 
-        self.optDFeat.synchronize()
-        self.optDImg.synchronize()
-
         self.optDFeat.zero_grad()
         self.optDImg.zero_grad()
 
@@ -335,9 +331,6 @@ class Solver(object):
         # 4. Train Basemodel
         # ----------------------------
 
-        self.optBase.synchronize()
-        self.optBase.zero_grad()
-
         for param in self.netDImg.parameters():
             param.requires_grad = False
         for param in self.netDFeat.parameters():
@@ -361,8 +354,6 @@ class Solver(object):
         # ----------------------------
 
         if (i_iter+1) % self.config['train']['GAN']['n_critic'] == 0:
-            self.optG.synchronize()
-            self.optBase.synchronize()
             self.optBase.zero_grad()
             self.optG.zero_grad()
 
@@ -387,55 +378,54 @@ class Solver(object):
         # -----------------------------------------------
 
 
-        if hvd.rank() == 0:
+        if (i_iter+1) % self.log_step == 0:
+            et = time.time() - self.start_time
+            et = str(datetime.timedelta(seconds=et))[:-7]
+            log = "Elapsed [{}], Iteration [{}/{}]\n".format(et, i_iter+1, self.early_stop_step)
+            for tag, value in self.log_loss.items():
+                log += ", {}: {:.4f}".format(tag, value)
+            histList = np.zeros((self.num_classes, self.num_classes))
+            source_pd = pred.detach().data[:self.batch_size*self.num_source].max(1)[1].cpu().numpy()
+            source_lb = labels.data.cpu().numpy()
+            acc = np.mean(source_pd == source_pd)
+
+            log += "\nAcc: {:.2f}".format(acc)
+            print(log)
+
+        if self.config['exp_setting']['use_tensorboard']:
             if (i_iter+1) % self.log_step == 0:
-                et = time.time() - self.start_time
-                et = str(datetime.timedelta(seconds=et))[:-7]
-                log = "Elapsed [{}], Iteration [{}/{}]\n".format(et, i_iter+1, self.early_stop_step)
                 for tag, value in self.log_loss.items():
-                    log += ", {}: {:.4f}".format(tag, value)
-                histList = np.zeros((self.num_classes, self.num_classes))
-                source_pd = pred.detach().data[:self.batch_size*self.num_source].max(1)[1].cpu().numpy()
-                source_lb = labels.data.cpu().numpy()
-                acc = np.mean(source_pd == source_pd)
+                    category, name = tag.split('_')[0], tag.split('_')[1]
+                    self.logger.scalar_summary('{}/{}'.format(category, name), value, i_iter+1)
+                for tag, value in self.log_lr.items():
+                    self.logger.scalar_summary('lr/{}'.format(tag), value, i_iter+1)
 
-                log += "\nAcc: {:.2f}".format(acc)
-                print(log)
+        if (i_iter+1) % self.sample_step == 0:
+            with torch.no_grad():
+                image_fixed = images[[i*self.batch_size for i in range(self.num_domain)]]
+                image_fake_list = [image_fixed]
+                for d_fixed in self._fixed_test_domain_label(num_sample=self.num_domain):
+                    feature, _ = self.basemodel(image_fixed.to(self.gpu0))
+                    if self.base == 'VGG':
+                        concat1, concat2, concat3, concat4, concat5, _ = feature
+                        image_fake = self._netVGG(concat1, concat2, concat3, concat4, concat5,
+                                                        d_fixed.to(self.gpu_map['netG']))
+                    else:
+                        image_fake = self.netG(feature.to(self.gpu_map['netG']), d_fixed.to(self.gpu_map['netG']))
+                    image_fake_list.append(image_fake)
+                image_concat = torch.cat(image_fake_list, dim=3)
+                sample_path = os.path.join(self.log_dir, '{}-FixTrsimages.jpg'.format(i_iter+1))
+                save_image(self._denorm(image_concat.data.cpu()), sample_path, nrow=self.num_domain, padding=0)
+                print('Saved real and fake images into {}...'.format(sample_path))
 
-            if self.config['exp_setting']['use_tensorboard']:
-                if (i_iter+1) % self.log_step == 0:
-                    for tag, value in self.log_loss.items():
-                        category, name = tag.split('_')[0], tag.split('_')[1]
-                        self.logger.scalar_summary('{}/{}'.format(category, name), value, i_iter+1)
-                    for tag, value in self.log_lr.items():
-                        self.logger.scalar_summary('lr/{}'.format(tag), value, i_iter+1)
-
-            if (i_iter+1) % self.sample_step == 0:
-                with torch.no_grad():
-                    image_fixed = images[[i*self.batch_size for i in range(self.num_domain)]]
-                    image_fake_list = [image_fixed]
-                    for d_fixed in self._fixed_test_domain_label(num_sample=self.num_domain):
-                        feature, _ = self.basemodel(image_fixed.to(self.gpu0))
-                        if self.base == 'VGG':
-                            concat1, concat2, concat3, concat4, concat5, _ = feature
-                            image_fake = self._netVGG(concat1, concat2, concat3, concat4, concat5,
-                                                         d_fixed.to(self.gpu_map['netG']))
-                        else:
-                            image_fake = self.netG(feature.to(self.gpu_map['netG']), d_fixed.to(self.gpu_map['netG']))
-                        image_fake_list.append(image_fake)
-                    image_concat = torch.cat(image_fake_list, dim=3)
-                    sample_path = os.path.join(self.log_dir, '{}-FixTrsimages.jpg'.format(i_iter+1))
-                    save_image(self._denorm(image_concat.data.cpu()), sample_path, nrow=self.num_domain, padding=0)
-                    print('Saved real and fake images into {}...'.format(sample_path))
-
-            if (i_iter+1) % self.save_step == 0:
-                print('taking snapshot ...')
-                torch.save({
-                    'basemodel': self.basemodel.state_dict(),
-                    'netG': self.netG.state_dict(),
-                    'netDImg': self.netDImg.state_dict(),
-                    'netDFeat': self.netDFeat.state_dict(),
-                }, osp.join(self.snapshot_dir, 'pretrain_'+str(i_iter+1)+'.pth'))
+        if (i_iter+1) % self.save_step == 0:
+            print('taking snapshot ...')
+            torch.save({
+                'basemodel': self.basemodel.state_dict(),
+                'netG': self.netG.state_dict(),
+                'netDImg': self.netDImg.state_dict(),
+                'netDFeat': self.netDFeat.state_dict(),
+            }, osp.join(self.snapshot_dir, 'pretrain_'+str(i_iter+1)+'.pth'))
 
     def _validation(self, i_iter):
         accList = []
@@ -464,7 +454,6 @@ class Solver(object):
 
         info_str = 'Iteration {}: acc:{:0.2f}'.format(i_iter+1,
                                                       np.mean(accList))
-        if hvd.rank() == 0:
-            self.logger.scalar_summary('metrics/val_acc', np.mean(accList), i_iter+1)
+        self.logger.scalar_summary('metrics/val_acc', np.mean(accList), i_iter+1)
         print(info_str)
 

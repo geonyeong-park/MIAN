@@ -11,7 +11,7 @@ from dataset.transforms import augment_collate
 class MultiDomainLoader(object):
     def __init__(self, dataset, rootdir, resize,
                  batch_size=1, shuffle=False, num_workers=2, half_crop=None,
-                 num_processes=2, rank=0, task='segmentation'):
+                 task='segmentation'):
         """
         dataset: list of domains, ['Cityscapes', 'GTA5', ...]
         rootdir: root for data folders
@@ -35,8 +35,6 @@ class MultiDomainLoader(object):
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.num_workers = num_workers
-        self.num_processes = num_processes
-        self.rank = rank
         self.task = task
 
         datadir = os.path.join(rootdir, 'data')
@@ -124,21 +122,15 @@ class MultiDomainLoader(object):
 
         if target:
             collate_fn=torch.utils.data.dataloader.default_collate
-            train_sampler = torch.utils.data.distributed.DistributedSampler(self.target_valid_dataset,
-                                                                            num_replicas=self.num_processes,
-                                                                            rank=self.rank)
             loader_tgt = torch.utils.data.DataLoader(self.target_valid_dataset,
                     batch_size=batch_size, num_workers=num_workers, drop_last=True,
-                    collate_fn=collate_fn, pin_memory=True, sampler=train_sampler)
+                    collate_fn=collate_fn, pin_memory=True)
             return loader_tgt
 
         for s in self.dataset_list:
-            train_sampler = torch.utils.data.distributed.DistributedSampler(s,
-                                                                            num_replicas=self.num_processes,
-                                                                            rank=self.rank)
             loader_src = torch.utils.data.DataLoader(s,
                     batch_size=batch_size, num_workers=num_workers, drop_last=True,
-                    collate_fn=collate_fn, pin_memory=True, sampler=train_sampler)
+                    collate_fn=collate_fn, pin_memory=True)
             loader_list.append((loader_src))
         self.loader_list = loader_list
 
