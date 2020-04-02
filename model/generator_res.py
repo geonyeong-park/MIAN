@@ -5,6 +5,42 @@ import torch.nn.functional as F
 import numpy as np
 
 
+class DecoderBlock(nn.Module):
+    def __init__(self, in_channels, middle_channels, out_channels, num_domain, norm, gpu, upsample=True):
+        super(DecoderBlock, self).__init__()
+        self.in_channels = in_channels
+        self.gpu = gpu
+        self.num_domain = num_domain
+        self.upsample = upsample
+
+        self.conv = nn.Conv2d(in_channels+num_domain, middle_channels, kernel_size=3, stride=1, padding=1, bias=False).to(gpu) #Concat domain code everytime
+        self.cn = ConditionalBatchOrInstanceNorm2d(middle_channels, num_domain, norm).to(gpu)
+        self.relu = nn.ReLU(inplace=True).to(gpu)
+        self.block = ResidualBlock(middle_channels, middle_channels, num_domain, norm).to(gpu)
+
+        if upsample:
+            self.upsample = UpsamplingBlock(middle_channels, out_channels, num_domain, norm).to(gpu)
+        else:
+            assert middle_channels == out_channels
+
+    def _tile_domain_code(self, feature, domain):
+        w, h = feature.size()[-2], feature.size()[-1]
+        domain_code = torch.eye(self.num_domain)[domain.long()].view(-1, self.num_domain, 1, 1).repeat(1, 1, w, h).to(self.gpu)
+        return torch.cat([feature, domain_code], dim=1).to(self.gpu)
+
+    def forward(self, x, c):
+        h = self._tile_domain_code(x, c)
+        h = self.conv(h)
+        h = self.cn(h, c)
+        h = self.relu(h)
+        h = self.block(h, c)
+        if self.upsample:
+            img = self.upsample(h, c)
+            return img
+        else:
+            return h
+
+
 class ConditionalBatchOrInstanceNorm2d(nn.Module):
     def __init__(self, num_features, num_domain, norm='CondIN'):
         super().__init__()
@@ -76,48 +112,43 @@ class UpsamplingBlock(nn.Module):
 
 class GeneratorRes(nn.Module):
     """Generator network."""
-    def __init__(self, in_dim=2048, conv_dim=1024, num_domain=3, repeat_num=3, norm='CondIN', gpu=None):
+    def __init__(self, num_filters=64, num_domain=3, norm='CondIN', gpu=None, gpu2=None, num_classes=32):
         super(GeneratorRes, self).__init__()
-
-        curr_dim = conv_dim
-        self.repeat_num_RB = repeat_num
-        self.repeat_num_US = 5
+        self.pool = nn.MaxPool2d(2, 2)
         self.num_domain = num_domain
+        self.num_classes = num_classes
         self.norm = norm
         self.gpu = gpu
+        self.gpu2 = gpu2
 
-        # Encode layers
-        self.encode_conv = nn.Conv2d(in_dim+num_domain, curr_dim, kernel_size=3, stride=1, padding=1, bias=False)
-        self.encode_conv2 = nn.Conv2d(curr_dim+num_domain, curr_dim, kernel_size=3, stride=1, padding=1, bias=False)
+        self.dec6 = DecoderBlock(2048+num_classes, num_filters*8*2, num_filters*8, num_domain, norm, gpu)
+        self.dec5 = DecoderBlock(num_filters * 8, num_filters * 8, num_filters * 8, num_domain, norm, gpu)
+        self.dec4 = DecoderBlock(num_filters * 8, num_filters * 4, num_filters * 4, num_domain, norm, gpu)
+        self.dec3 = DecoderBlock(num_filters * 4, num_filters * 4, num_filters * 4, num_domain, norm, gpu)
+        self.dec2 = DecoderBlock(num_filters * 4, num_filters * 2, num_filters * 2, num_domain, norm, gpu)
+        self.dec1 = DecoderBlock(num_filters * 2, num_filters * 1, num_filters * 1, num_domain, norm, gpu2)
+        self.last_conv = nn.Conv2d(num_filters * 1, 3, kernel_size=1).to(gpu2)
+        self.relu = nn.ReLU().to(gpu2)
 
-        # Bottleneck layers.
-        for i in range(self.repeat_num_RB):
-            setattr(self, 'RB{}'.format(i), ResidualBlock(dim_in=curr_dim, dim_out=curr_dim, num_domain=num_domain, norm=norm))
+    def _tile_label_code(self, feature, label):
+        feature = feature.view(feature.size()[0], feature.size()[1], 1, 1)
+        w, h = feature.size()[-2], feature.size()[-1]
+        label_code = label.view(-1, self.num_classes, 1, 1).repeat(1, 1, w, h).to(self.gpu)
+        return torch.cat([feature, label_code], dim=1).to(self.gpu)
 
-        # Up-sampling layers.
-        for i in range(self.repeat_num_US):
-            setattr(self, 'US{}'.format(i), UpsamplingBlock(dim_in=curr_dim, dim_out=curr_dim//2, num_domain=num_domain, norm=norm))
-            curr_dim = curr_dim // 2
+    def forward(self, x, c, l):
+        """c is not one-hot vector, l is one-hot vector for labels"""
 
-        self.last_conv = nn.Conv2d(curr_dim, 3, kernel_size=7, stride=1, padding=3, bias=False)
-        #layers.append(2*nn.Tanh())
+        xlabel = self._tile_label_code(x, l)
 
-    def _tile_domain_code(self, feature, domain):
-        width = feature.size()[-1]
-        domain_code = torch.eye(self.num_domain)[domain.long()].view(-1, self.num_domain, 1, 1).repeat(1, 1, width, width).to(self.gpu)
-        return torch.cat([feature, domain_code], dim=1)
+        h = self.dec6(xlabel, c)
+        h = self.dec5(h, c)
+        h = self.dec4(h, c)
+        h = self.dec3(h, c)
+        h = self.dec2(h, c)
 
-    def forward(self, x, c):
-        """c is not one-hot vector"""
-        h = self._tile_domain_code(x, c)
-        h = self.encode_conv(h)
-        h = self._tile_domain_code(h, c)
-        h = self.encode_conv2(h)
+        h = h.to(self.gpu2)
+        c = c.to(self.gpu2)
 
-        for i in range(self.repeat_num_RB):
-            h = getattr(self, 'RB{}'.format(i))(h, c)
-
-        for i in range(self.repeat_num_US):
-            h = getattr(self, 'US{}'.format(i))(h, c)
-
-        return self.last_conv(h)
+        h = self.dec1(h, c)
+        return self.last_conv(self.relu(h).contiguous())

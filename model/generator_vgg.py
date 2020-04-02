@@ -3,42 +3,7 @@ import torch.nn as nn
 from torch.nn.utils import spectral_norm
 import torch.nn.functional as F
 import numpy as np
-from model.generator_res import ResidualBlock, UpsamplingBlock, ConditionalBatchOrInstanceNorm2d
-
-
-class DecoderBlock(nn.Module):
-    def __init__(self, in_channels, middle_channels, out_channels, num_domain, norm, gpu, upsample=True):
-        super(DecoderBlock, self).__init__()
-        self.in_channels = in_channels
-        self.gpu = gpu
-        self.num_domain = num_domain
-        self.upsample = upsample
-
-        self.conv = nn.Conv2d(in_channels+num_domain, middle_channels, kernel_size=3, stride=1, padding=1, bias=False).to(gpu) #Concat domain code everytime
-        self.cn = ConditionalBatchOrInstanceNorm2d(middle_channels, num_domain, norm).to(gpu)
-        self.relu = nn.ReLU(inplace=True).to(gpu)
-        self.block = ResidualBlock(middle_channels, middle_channels, num_domain, norm).to(gpu)
-
-        if upsample:
-            self.upsample = UpsamplingBlock(middle_channels, out_channels, num_domain, norm).to(gpu)
-        else:
-            assert middle_channels == out_channels
-
-    def _tile_domain_code(self, feature, domain):
-        w, h = feature.size()[-2], feature.size()[-1]
-        domain_code = torch.eye(self.num_domain)[domain.long()].view(-1, self.num_domain, 1, 1).repeat(1, 1, w, h).to(self.gpu)
-        return torch.cat([feature, domain_code], dim=1).to(self.gpu)
-
-    def forward(self, x, c):
-        h = self._tile_domain_code(x, c)
-        h = self.conv(h)
-        h = self.cn(h, c)
-        h = self.relu(h)
-        h = self.block(h, c)
-        if self.upsample:
-            return self.upsample(h, c)
-        else:
-            return h
+from model.generator_res import DecoderBlock
 
 
 class GeneratorVGG(nn.Module):

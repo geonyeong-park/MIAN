@@ -10,8 +10,8 @@ data:
   input_size: '320,320'
   crop_size: 64
   num_classes: 31
-  source: ['Webcam', 'DSLR']
-  target: 'Amazon'
+  source: ['Webcam']
+  target: 'DSLR'
   num_domain: 2
   num_workers: 1
   ignore_label: 255
@@ -20,11 +20,11 @@ data:
 train:
   num_steps: 250000
   num_steps_stop: 150000
-  batch_size: 32
+  batch_size: 64
 
   base_model:
     lr: 0.00001
-    momentum: 0.9
+    momentum: 0.7
   netD:
     lr: 0.0001
     momentum: 0.7
@@ -33,29 +33,58 @@ train:
     momentum: 0.7
   lr_decay_power: 0.9
   weight_decay: 0.0005
-  aux_sem_thres: 1.5
+  aux_sem_thres: 0.1
 
   lambda:
     base_model:
-      bloss_Clf: 0.
-      bloss_AdvFeat: 0.2
+      bloss_Clf:
+        init: 0.
+        final: 0.
+        step: 1.
+      bloss_AdvFeat:
+        init: 0.
+        final: 1.
+        step: 10000
     base_model_netG:
-      bGloss_fake: 0.2
-      bGloss_idt: 0.
-      bGloss_cyc: 0.5 # Semantic Segmentation에서는 classification loss가 크므로, 0.5~1까지는 키워줘야할 듯
-      bGloss_dcls: 1.
-      bGloss_auxsem: 0.2
+      bGloss_fake: 
+        init: 1.
+        final: 1.
+        step: 1
+      bGloss_idt: 
+        init: 0.
+        final: 0.
+        step: 1
+      bGloss_cyc:
+        init: 100.
+        final: 10.
+        step: 1000
+      bGloss_dcls: 
+        init: 10.
+        final: 10.
+        step: 1
+      bGloss_auxsem:
+        init: 1.
+        final: 1.
+        step: 1
     netD:
-      Dloss_fakereal: 1.
-      Dloss_dcls: 10.
-      Dloss_auxsem: 1.
+      Dloss_fakereal:
+        init: 1.
+        final: 1.
+        step: 1
+      Dloss_dcls:
+        init: 10.
+        final: 10.
+        step: 1
+      Dloss_auxsem:
+        init: 1.
+        final: 1.
+        step:1
 
   GAN: 
     model: 'WGAN_GP'
-    GP: 10
+    GP: 30
     n_critic: 5
-  base: 'VGG'  # VGG or ResNet
-
+  base: 'ResNet'  # VGG or ResNet
 
 model:
   netD:
@@ -67,6 +96,6 @@ model:
     conv_dim: 
       ResNet: 64
       VGG: 64
-    norm: 'CondIN'
+    norm: 'CondBN'
     repeat_num: 3  # For ResBlock
 

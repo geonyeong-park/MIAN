@@ -78,11 +78,24 @@ class Solver(object):
 
         self.log_loss = {}
         self.log_lr = {}
-        self.log_step = 1000
-        self.sample_step = 1000
-        self.val_step = 50000
+        self.log_step = 100
+        self.sample_step = 100
+        self.val_step = 100
         self.save_step = 1000 #5000
         self.logger = Logger(self.log_dir)
+
+        loss_lambda = {}
+        for k in self.config['train']['lambda'].keys():
+            coeff = self.config['train']['lambda'][k]
+            for sub_k in coeff.keys():
+                init = coeff[sub_k]['init']
+                final = coeff[sub_k]['final']
+                step = coeff[sub_k]['step']
+                loss_lambda[k] = {}
+                loss_lambda[k][sub_k]['cur'] = init
+                loss_lambda[k][sub_k]['inc'] = (final-init)/step
+                loss_lambda[k][sub_k]['final'] = final
+        self.loss_lambda = loss_lambda
 
     def train(self):
         # Broadcast parameters and optimizer state for every processes
@@ -98,6 +111,12 @@ class Solver(object):
 
             if (i_iter+1) % self.val_step == 0:
                 self._validation(i_iter)
+
+            # update lambda
+            for k in self.loss_lambda.keys():
+                for sub_k in self.loss_lambda[k].keys():
+                    if self.loss_lambda[k][sub_k]['cur'] < self.loss_lambda[k][sub_k]['final']:
+                        self.loss_lambda[k][sub_k]['cur'] += self.loss_lambda[k][sub_k]['inc']
 
             if (i_iter+1) >= self.config['train']['num_steps_stop']:
                 break
@@ -173,8 +192,9 @@ class Solver(object):
 
     def _aux_semantic_loss(self, aux_logit_5D, label):
         # aux_logit_5D: (num_source, batch, c, w, h)
-        aux_logit = aux_logit_5D.permute(1, 0, 2, 3, 4)
-        N, S, C, _, _ = aux_logit.size()
+        # aux_logit = aux_logit_5D.permute(1, 0, 2, 3, 4)
+        aux_logit = aux_logit_5D.permute(1, 0, 2)
+        N, S, C = aux_logit.size()
         aux_logit = aux_logit.view(N, S, C)
 
         aux_logit_source = aux_logit[ :self.num_source*self.batch_size]
@@ -200,9 +220,10 @@ class Solver(object):
                 if 'aux' in key: lambdas[key]=0.
 
         loss = 0
-        for k, weight in lambdas.items():
+        for k in lambdas.keys():
             k_loss = getattr(self, k)
             self.log_loss[k] = k_loss.item()
+            weight = lambdas[k]['cur']
             loss += k_loss.to(self.gpu0) * weight
         loss.backward(retain_graph=retain_graph)
 
@@ -211,6 +232,7 @@ class Solver(object):
 
         self.optDFeat.zero_grad()
         self.optDImg.zero_grad()
+        self.optBase.zero_grad()
 
         """
         - Basemodel/Generator
@@ -275,10 +297,13 @@ class Solver(object):
 
         """ Idt, Fake, Cycle, DCls, Semantic Loss (Generator) """
         if self.base == 'ResNet':
-            idtfakeImg = self.netG(concat5.to(self.gpu_map['netG']), self.domain_label)
-            trsfakeImg = self.netG(concat5.to(self.gpu_map['netG']), self.shuffled_domain_label)
+            label_onehot = torch.cat([
+                torch.eye(self.num_classes+1)[labels],
+                torch.eye(self.num_classes+1)[-1].unsqueeze(0).repeat(self.batch_size, 1)], dim=0).to(self.gpu_map['netG'])
+            idtfakeImg = self.netG(feature.to(self.gpu_map['netG']), self.domain_label, label_onehot)
+            trsfakeImg = self.netG(feature.to(self.gpu_map['netG']), self.shuffled_domain_label, label_onehot)
             cycFeat, _ = self.basemodel(trsfakeImg.to(self.gpu0))
-            cycfakeImg = self.netG(cycFeat.to(self.gpu_map['netG']), self.domain_label)
+            cycfakeImg = self.netG(cycFeat.to(self.gpu_map['netG']), self.domain_label, label_onehot)
         elif self.base == 'VGG':
             idtfakeImg = self._netVGG(concat1, concat2, concat3, concat4, concat5, self.domain_label)
             trsfakeImg = self._netVGG(concat1, concat2, concat3, concat4, concat5, self.shuffled_domain_label)
@@ -298,7 +323,7 @@ class Solver(object):
 
         """ (FeatD, SemD) """
         # Train with original domain labels
-        DFeatlogit = self.netDFeat(Dfeature.detach().to(self.gpu_map['netDFeat']))
+        DFeatlogit = self.netDFeat(feature.detach().to(self.gpu_map['netDFeat']))
         Dloss_AdvFeat = self.Dgan_loss(DFeatlogit,
                                         self._real_domain_label(DFeatlogit, 'Feat'))
         Dloss_AdvFeat.backward()
@@ -322,7 +347,7 @@ class Solver(object):
         self.Dloss_fakereal = self.Dloss_fake + self.Dloss_real + self.Dloss_gp
         # At this moment we don't care about semantic loss of target data
 
-        self._backprop_weighted_losses(self.config['train']['lambda']['netD'],
+        self._backprop_weighted_losses(self.loss_lambda['netD'],
                                        aux_over_ths=True,
                                        retain_graph=True)
         self.optDFeat.step()
@@ -339,12 +364,12 @@ class Solver(object):
         self.bloss_Clf = nn.CrossEntropyLoss()(pred[ :self.num_source*self.batch_size].to(self.gpu0),
                                                labels)
 
-        DFeatlogit = self.netDFeat(Dfeature.to(self.gpu_map['netDFeat']))
+        DFeatlogit = self.netDFeat(feature.to(self.gpu_map['netDFeat']))
         self.bloss_AdvFeat = self.Dgan_loss(DFeatlogit,
                                             self._fake_domain_label(DFeatlogit, 'Feat'))
 
         retain = True if (i_iter+1) % self.config['train']['GAN']['n_critic'] == 0 else False
-        self._backprop_weighted_losses(self.config['train']['lambda']['base_model'],
+        self._backprop_weighted_losses(self.loss_lambda['base_model'],
                                        aux_over_ths=True,
                                        retain_graph=retain)
         self.optBase.step()
@@ -368,8 +393,8 @@ class Solver(object):
             self.bGloss_auxsem = self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
             # At this moment we don't care about semantic loss of target data
 
-            self._backprop_weighted_losses(self.config['train']['lambda']['base_model_netG'],
-                                        self.Dloss_auxsem > self.config['train']['aux_sem_thres'])
+            self._backprop_weighted_losses(self.loss_lambda['base_model_netG'],
+                                           self.Dloss_auxsem < self.config['train']['aux_sem_thres'])
             self.optG.step()
             self.optBase.step()
             """optBase도!!!"""
@@ -387,9 +412,9 @@ class Solver(object):
             histList = np.zeros((self.num_classes, self.num_classes))
             source_pd = pred.detach().data[:self.batch_size*self.num_source].max(1)[1].cpu().numpy()
             source_lb = labels.data.cpu().numpy()
-            acc = np.mean(source_pd == source_pd)
+            acc = np.mean(source_pd == source_lb)
 
-            log += "\nAcc: {:.2f}".format(acc)
+            log += "\nAcc: {:.2f}".format(acc.item()*100)
             print(log)
 
         if self.config['exp_setting']['use_tensorboard']:
@@ -403,6 +428,11 @@ class Solver(object):
         if (i_iter+1) % self.sample_step == 0:
             with torch.no_grad():
                 image_fixed = images[[i*self.batch_size for i in range(self.num_domain)]]
+                label_fixed = labels[[i*self.batch_size for i in range(self.num_domain-1)]]
+                label_fixed_onehot = torch.cat([
+                    torch.eye(self.num_classes+1)[label_fixed],
+                    torch.eye(self.num_classes+1)[-1].unsqueeze(0)])
+
                 image_fake_list = [image_fixed]
                 for d_fixed in self._fixed_test_domain_label(num_sample=self.num_domain):
                     feature, _ = self.basemodel(image_fixed.to(self.gpu0))
@@ -411,7 +441,9 @@ class Solver(object):
                         image_fake = self._netVGG(concat1, concat2, concat3, concat4, concat5,
                                                         d_fixed.to(self.gpu_map['netG']))
                     else:
-                        image_fake = self.netG(feature.to(self.gpu_map['netG']), d_fixed.to(self.gpu_map['netG']))
+                        image_fake = self.netG(feature.to(self.gpu_map['netG']),
+                                               d_fixed.to(self.gpu_map['netG']),
+                                               label_fixed_onehot.to(self.gpu_map['netG']))
                     image_fake_list.append(image_fake)
                 image_concat = torch.cat(image_fake_list, dim=3)
                 sample_path = os.path.join(self.log_dir, '{}-FixTrsimages.jpg'.format(i_iter+1))
