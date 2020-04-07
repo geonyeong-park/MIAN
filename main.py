@@ -8,6 +8,7 @@ import os
 import os.path as osp
 import matplotlib.pyplot as plt
 import random
+from shutil import copyfile
 
 from solver import Solver
 from model.deeplab_res import DeeplabRes
@@ -16,7 +17,6 @@ from model.discriminator import IMGDiscriminator, SEMDiscriminator
 from model.generator_res import GeneratorRes
 from model.generator_vgg import GeneratorVGG
 from dataset.multiloader import MultiDomainLoader
-import horovod.torch as hvd
 
 vgg16_path = './vgg16-00b39a1b-updated.pth'
 
@@ -33,6 +33,8 @@ def get_arguments():
                         help="yaml pathway")
     parser.add_argument("--exp_name", type=str, default='GTA2City', required=True,
                         help="")
+    parser.add_argument("--exp_detail", type=str, default=None, required=False,
+                        help="")
     return parser.parse_args()
 
 
@@ -41,15 +43,8 @@ def main(config, args):
 
     # -------------------------------
     # Setting Horovod
-    hvd.init()
-    num_processes = hvd.size()
-    print('Start process {}'.format(hvd.rank()))
-    torch.set_num_threads(1)
 
-    gpu_per_process = len(args.gpu) // num_processes
-    device_map = {i: args.gpu[i*gpu_per_process: (i+1)*gpu_per_process] for i in range(num_processes)}
-    gpus_tobe_used = device_map[hvd.rank()]
-    gpus_tobe_used = ','.join([str(gpuNum) for gpuNum in gpus_tobe_used])
+    gpus_tobe_used = ','.join([str(gpuNum) for gpuNum in args.gpu])
     print('gpus_tobe_used: {}'.format(gpus_tobe_used))
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpus_tobe_used)
@@ -61,14 +56,15 @@ def main(config, args):
     gpu = args.gpu
     gpu_map = {
         'basemodel': 'cuda:0',
-        'netDImg': 'cuda:0',
-        'netDFeat': 'cuda:0',
+        'netDImg': 'cuda:1',
+        'netDFeat': 'cuda:1',
         'netG': 'cuda:1',
         'netG_2': 'cuda:1',
         'all_order': gpu
     }
 
     num_classes = config['data']['num_classes']
+    input_size = config['data']['input_size']
     cropped_size = config['data']['crop_size']
     dataset = config['data']['source'] + [config['data']['target']]
     num_workers = config['data']['num_workers']
@@ -97,62 +93,46 @@ def main(config, args):
     # 1. Create Model
     # ------------------------
 
-    basemodel = DeeplabVGG(num_classes=num_classes, vgg16_path=vgg16_path)
+    basemodel = DeeplabRes(num_classes=num_classes)
     basemodel.to(gpu_map['basemodel'])
 
     netDImg = IMGDiscriminator(image_size=cropped_size, conv_dim=D_convdim_img, repeat_num=D_repeat_img,
                                channel=3, num_domain=num_domain, num_classes=num_classes)
     netDFeat = SEMDiscriminator(conv_dim=512, repeat_num=2,
-                                channel=1024, num_domain=num_domain, feat=True)
+                                channel=2048, num_domain=num_domain, feat=True)
 
     netDImg.to(gpu_map['netDImg'])
     netDFeat.to(gpu_map['netDFeat'])
 
-    netG = GeneratorVGG(num_filters=G_convdim, num_domain=num_domain,
-                        norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'])
+    netG = GeneratorRes(num_filters=G_convdim, num_domain=num_domain, repeat_num=G_repeat_num,
+                        norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'], num_classes=num_classes+1)
 
     # ------------------------
     # 2. Create DataLoader
     # ------------------------
-    loader = MultiDomainLoader(dataset, '.', cropped_size, batch_size=batch_size,
+    loader = MultiDomainLoader(dataset, '.', input_size, cropped_size, batch_size=batch_size,
                                shuffle=True, num_workers=num_workers, half_crop=None,
-                               num_processes=num_processes, rank=hvd.rank(), task='office')
+                               task='office')
     TargetLoader = loader.TargetLoader
 
     # ------------------------
     # 3. Create Optimizer and Solver
     # ------------------------
 
-    optBase_batches_per_allreduce = 2
-    base_lr = base_lr*num_processes*optBase_batches_per_allreduce
-    optBase = optim.Adam(basemodel.optim_parameters(base_lr),
-                         betas=(base_momentum, 0.99), weight_decay=weight_decay)
-    optBase = hvd.DistributedOptimizer(optBase,
-                                       named_parameters=basemodel.named_parameters(),
-                                       backward_passes_per_step=optBase_batches_per_allreduce)
+    optBase = optim.SGD(basemodel.optim_parameters(base_lr),
+                         momentum=base_momentum, weight_decay=weight_decay)
 
-    optDImg_batches_per_allreduce = 1
-    DImg_lr = D_lr*num_processes*optDImg_batches_per_allreduce
+    DImg_lr = D_lr
 
     optDImg = optim.Adam(netDImg.parameters(),
                         lr=DImg_lr, betas=(D_momentum, 0.99), weight_decay=weight_decay)
-    optDImg = hvd.DistributedOptimizer(optDImg,
-                                       named_parameters=netDImg.named_parameters(),
-                                       backward_passes_per_step=optDImg_batches_per_allreduce)
 
-    DFeat_lr = D_lr*num_processes
+    DFeat_lr = D_lr
     optDFeat = optim.Adam(netDFeat.parameters(),
                         lr=DFeat_lr, betas=(D_momentum, 0.99), weight_decay=weight_decay)
-    optDFeat = hvd.DistributedOptimizer(optDFeat,
-                                       named_parameters=netDFeat.named_parameters())
 
-    optG_batches_per_allreduce = 1
-    G_lr = G_lr*num_processes*optG_batches_per_allreduce
     optG = optim.Adam(netG.parameters(),
                       lr=G_lr, betas=(G_momentum, 0.99), weight_decay=weight_decay)
-    optG = hvd.DistributedOptimizer(optG,
-                                    named_parameters=netG.named_parameters(),
-                                    backward_passes_per_step=optG_batches_per_allreduce)
 
     solver = Solver(base, basemodel, netDImg, netDFeat, netG, loader, TargetLoader,
                     base_lr, DImg_lr, DFeat_lr, G_lr,
@@ -177,5 +157,12 @@ if __name__ == '__main__':
     for item in path_list:
         if not os.path.exists(item):
             os.makedirs(item)
+
+    if args.exp_detail is not None:
+        print(args.exp_detail)
+        with open(os.path.join(log_dir, exp_name, 'exp_detail.txt'), 'w') as f:
+            f.write(args.exp_detail+'\n')
+            f.close()
+    copyfile(args.yaml, os.path.join(log_dir, exp_name, 'config.yaml'))
 
     main(config, args)

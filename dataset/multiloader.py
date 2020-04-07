@@ -9,8 +9,8 @@ import numpy as np
 from dataset.transforms import augment_collate
 
 class MultiDomainLoader(object):
-    def __init__(self, dataset, rootdir, resize,
-                 batch_size=1, shuffle=False, num_workers=2, half_crop=None,
+    def __init__(self, dataset, rootdir, resize, cropsize,
+                 batch_size=1, shuffle=True, num_workers=2, half_crop=None,
                  task='segmentation'):
         """
         dataset: list of domains, ['Cityscapes', 'GTA5', ...]
@@ -31,6 +31,7 @@ class MultiDomainLoader(object):
             ]
         self.dataset = dataset
         self.resize = resize
+        self.cropsize = cropsize
         self.half_crop = half_crop
         self.batch_size = batch_size
         self.shuffle = shuffle
@@ -49,6 +50,7 @@ class MultiDomainLoader(object):
 
             source_ = getattr(module, '{}DataSet'.format(source))(datadir_, txtdir_,
                                                                   resize=self.resize,
+                                                                  cropsize=self.cropsize,
                                                                   base_transform=self.base_transform)
             self.source_dataset.append(source_)
 
@@ -57,13 +59,15 @@ class MultiDomainLoader(object):
         datadir_ = os.path.join(datadir, target) if task == 'segmentation' else '{}/office/{}/images'.format(datadir, target.lower())
         txtdir_ = os.path.join(txtdir, '{}_list'.format(target))
         target_ = getattr(module, '{}DataSet'.format(target))(datadir_, txtdir_,
-                                                            resize=self.resize,
-                                                            base_transform=self.base_transform)
+                                                              resize=self.resize,
+                                                              cropsize=self.cropsize,
+                                                              base_transform=self.base_transform)
         self.target_dataset = target_
 
         target_val = getattr(module, '{}DataSet'.format(target))(datadir_, txtdir_,
                                                             split='val',
                                                             resize=self.resize,
+                                                            cropsize=self.cropsize,
                                                             base_transform=self.base_transform)
         self.target_valid_dataset = target_val
 
@@ -123,14 +127,14 @@ class MultiDomainLoader(object):
         if target:
             collate_fn=torch.utils.data.dataloader.default_collate
             loader_tgt = torch.utils.data.DataLoader(self.target_valid_dataset,
-                    batch_size=batch_size, num_workers=num_workers, drop_last=True,
-                    collate_fn=collate_fn, pin_memory=True)
+                    batch_size=batch_size, num_workers=num_workers, drop_last=False,
+                    collate_fn=collate_fn, pin_memory=True, shuffle=True)
             return loader_tgt
 
         for s in self.dataset_list:
             loader_src = torch.utils.data.DataLoader(s,
                     batch_size=batch_size, num_workers=num_workers, drop_last=True,
-                    collate_fn=collate_fn, pin_memory=True)
+                    collate_fn=collate_fn, pin_memory=True, shuffle=True)
             loader_list.append((loader_src))
         self.loader_list = loader_list
 

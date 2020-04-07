@@ -36,17 +36,13 @@ class ResNetMulti(nn.Module):
     def __init__(self, num_classes):
         super(ResNetMulti, self).__init__()
 
-        #self.resnet = PipelineParallelResNet101(split_size, gpus, num_classes)
-        self.resnet = nn.Sequential(*list(models.resnet101(pretrained=True).children())[:-2])
-        self.resnet.apply(deactivate_batchnorm)
-        self.deeplab = self._make_pred_layer(Classifier_Module, 2048, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
-
-    def _make_pred_layer(self, block, inplanes, dilation_series, padding_series, num_classes):
-        return block(inplanes, dilation_series, padding_series, num_classes)
+        self.resnet = nn.Sequential(*list(models.resnet50(pretrained=True).children())[:-2])
+        #self.resnet.apply(deactivate_batchnorm)
+        self.clf = nn.Linear(2048, num_classes)
 
     def forward(self, x):
         feature = self.resnet(x)
-        pred = self.deeplab(feature)
+        pred = self.clf(torch.mean(feature, dim=(2,3)))
         return feature, pred
 
     def get_1x_lr_params_NOscale(self):
@@ -73,7 +69,7 @@ class ResNetMulti(nn.Module):
         which does the classification of pixel into classes
         """
         b = []
-        b.append(self.deeplab.parameters())
+        b.append(self.clf.parameters())
 
         for j in range(len(b)):
             for i in b[j]:
@@ -81,7 +77,7 @@ class ResNetMulti(nn.Module):
 
     def optim_parameters(self, lr):
         return [{'params': self.get_1x_lr_params_NOscale(), 'lr': lr},
-                {'params': self.get_10x_lr_params(), 'lr': 10 * lr}]
+                {'params': self.get_10x_lr_params(), 'lr': 10*lr}]
 
 
 def DeeplabRes(num_classes=21):

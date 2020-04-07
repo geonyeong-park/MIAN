@@ -80,18 +80,21 @@ class Solver(object):
         self.log_lr = {}
         self.log_step = 100
         self.sample_step = 100
-        self.val_step = 100
+        self.val_step = 200
         self.save_step = 1000 #5000
         self.logger = Logger(self.log_dir)
 
         loss_lambda = {}
         for k in self.config['train']['lambda'].keys():
             coeff = self.config['train']['lambda'][k]
+            loss_lambda[k] = {}
+
             for sub_k in coeff.keys():
                 init = coeff[sub_k]['init']
                 final = coeff[sub_k]['final']
                 step = coeff[sub_k]['step']
-                loss_lambda[k] = {}
+
+                loss_lambda[k][sub_k] = {}
                 loss_lambda[k][sub_k]['cur'] = init
                 loss_lambda[k][sub_k]['inc'] = (final-init)/step
                 loss_lambda[k][sub_k]['final'] = final
@@ -217,7 +220,7 @@ class Solver(object):
     def _backprop_weighted_losses(self, lambdas, aux_over_ths, retain_graph=False):
         if not aux_over_ths:
             for key in lambdas.keys():
-                if 'aux' in key: lambdas[key]=0.
+                if 'aux' in key: lambdas[key]['cur']=0.
 
         loss = 0
         for k in lambdas.keys():
@@ -294,7 +297,6 @@ class Solver(object):
         if self.base == 'VGG':
             concat1, concat2, concat3, concat4, concat5, Dfeature = feature
 
-
         """ Idt, Fake, Cycle, DCls, Semantic Loss (Generator) """
         if self.base == 'ResNet':
             label_onehot = torch.cat([
@@ -311,17 +313,14 @@ class Solver(object):
             concat1, concat2, concat3, concat4, concat5, _ = cycFeat
             cycfakeImg = self._netVGG(concat1, concat2, concat3, concat4, concat5, self.domain_label)
 
-
         # -----------------------------
         # 3. Train Discriminators
         # -----------------------------
-
         for param in self.netDImg.parameters():
             param.requires_grad = True
         for param in self.netDFeat.parameters():
             param.requires_grad = True
 
-        """ (FeatD, SemD) """
         # Train with original domain labels
         DFeatlogit = self.netDFeat(feature.detach().to(self.gpu_map['netDFeat']))
         Dloss_AdvFeat = self.Dgan_loss(DFeatlogit,
@@ -329,7 +328,6 @@ class Solver(object):
         Dloss_AdvFeat.backward()
         self.log_loss['Dloss_AdvFeat'] = Dloss_AdvFeat.item()
 
-        """ (ImgD) """
         fake_logit, _, _ = self.netDImg(trsfakeImg.detach().to(self.gpu_map['netDImg']))
         self.Dloss_fake = self.gan_loss(fake_logit,
                                         Variable(torch.FloatTensor(fake_logit.data.size()).fill_(self.fake_label))
@@ -369,6 +367,7 @@ class Solver(object):
                                             self._fake_domain_label(DFeatlogit, 'Feat'))
 
         retain = True if (i_iter+1) % self.config['train']['GAN']['n_critic'] == 0 else False
+
         self._backprop_weighted_losses(self.loss_lambda['base_model'],
                                        aux_over_ths=True,
                                        retain_graph=retain)
@@ -377,6 +376,7 @@ class Solver(object):
         # ----------------------------
         # 5. Train netG
         # ----------------------------
+
 
         if (i_iter+1) % self.config['train']['GAN']['n_critic'] == 0:
             self.optBase.zero_grad()
@@ -397,7 +397,7 @@ class Solver(object):
                                            self.Dloss_auxsem < self.config['train']['aux_sem_thres'])
             self.optG.step()
             self.optBase.step()
-            """optBase도!!!"""
+
 
         # -----------------------------------------------
         # -----------------------------------------------

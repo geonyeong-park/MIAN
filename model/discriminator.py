@@ -80,6 +80,8 @@ class SEMDiscriminator(nn.Module):
         self.conv_domain_cls_patch = nn.Linear(curr_dim, num_domain)
 
     def forward(self, x):
+        if len(x.size()) == 4:
+            x = torch.mean(x, dim=(2,3))
         h = self.downsample(x)
         #h = self.dropout(h)
         out_src = self.conv_domain_cls_patch(h)
