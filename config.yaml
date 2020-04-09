@@ -7,12 +7,12 @@ exp_setting:
 
 
 data:
-  input_size: 300
-  crop_size: 256
+  input_size: 64
+  crop_size: 64
   num_classes: 31
-  source: ['Webcam']
-  target: 'DSLR'
-  num_domain: 2
+  source: ['Webcam', 'DSLR']
+  target: 'Amazon'
+  num_domain: 3
   num_workers: 1
   ignore_label: 255
 
@@ -20,23 +20,23 @@ data:
 train:
   num_steps: 250000
   num_steps_stop: 150000
-  batch_size: 32
+  batch_size: 128
 
   base_model:
-    lr: 0.0001
-    momentum: 0.7
+    lr: 0.00001
+    momentum: 0.9
   netD:
-    lr: 0.0001
-    momentum: 0.7
+    lr: 0.00001
+    momentum: 0.9
   netG:
-    lr: 0.0005
-    momentum: 0.7
-  lr_decay_power: 0.75
+    lr: 0.00001
+    momentum: 0.9
+  lr_decay_power: 0.9
   weight_decay: 0.0005
-  aux_sem_thres: 0.1
+  aux_sem_thres: 0.3
 
   lambda:
-    base_model:
+    classification:
       bloss_Clf:
         init: 1.
         final: 1.
@@ -49,10 +49,6 @@ train:
       bGloss_fake: 
         init: 0.02
         final: 0.02
-        step: 1
-      bGloss_idt: 
-        init: 0.
-        final: 0.
         step: 1
       bGloss_cyc:
         init: 0.1
@@ -91,11 +87,11 @@ model:
     conv_dim: 
       img: 32
     repeat_num:   # For downsampling (Remind PatchGAN)
-      img: 6
+      img: 5
   netG:
     conv_dim: 
       ResNet: 512
       VGG: 64
-    norm: 'CondIN'
-    repeat_num: 3  # For ResBlock
+    norm: 'CondBN'
+    repeat_num: 0 # For ResBlock
 

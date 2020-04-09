@@ -89,7 +89,7 @@ class ResidualBlock(nn.Module):
             assert cls is not None
             x = self.conv1(input)
             x = self.a1(self.norm1(x, cls))
-            x = self.a1(self.norm2(self.conv2(x), cls))
+            x = self.norm2(self.conv2(x), cls)
         elif self.norm == 'SN':
             x = self.block(input)
         return input + x
@@ -129,7 +129,8 @@ class GeneratorRes(nn.Module):
 
         filter = num_filters
         for i in range(5-1):
-            setattr(self, 'US{}'.format(i), UpsamplingBlock(filter, filter // 2, num_domain, norm).to(gpu))
+            #setattr(self, 'US{}'.format(i), DecoderBlock(filter, filter//2, filter//2, num_domain, norm, gpu))
+            setattr(self, 'US{}'.format(i), UpsamplingBlock(filter, filter//2, num_domain, norm).to(gpu))
             filter = filter // 2
 
         self.last_conv = UpsamplingBlock(filter, 3, num_domain, norm).to(gpu2)

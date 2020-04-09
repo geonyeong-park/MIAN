@@ -78,9 +78,9 @@ class Solver(object):
 
         self.log_loss = {}
         self.log_lr = {}
-        self.log_step = 100
-        self.sample_step = 100
-        self.val_step = 200
+        self.log_step = 1000
+        self.sample_step = 1000
+        self.val_step = 1000
         self.save_step = 1000 #5000
         self.logger = Logger(self.log_dir)
 
@@ -302,12 +302,10 @@ class Solver(object):
             label_onehot = torch.cat([
                 torch.eye(self.num_classes+1)[labels],
                 torch.eye(self.num_classes+1)[-1].unsqueeze(0).repeat(self.batch_size, 1)], dim=0).to(self.gpu_map['netG'])
-            idtfakeImg = self.netG(feature.to(self.gpu_map['netG']), self.domain_label, label_onehot)
             trsfakeImg = self.netG(feature.to(self.gpu_map['netG']), self.shuffled_domain_label, label_onehot)
             cycFeat, _ = self.basemodel(trsfakeImg.to(self.gpu0))
             cycfakeImg = self.netG(cycFeat.to(self.gpu_map['netG']), self.domain_label, label_onehot)
         elif self.base == 'VGG':
-            idtfakeImg = self._netVGG(concat1, concat2, concat3, concat4, concat5, self.domain_label)
             trsfakeImg = self._netVGG(concat1, concat2, concat3, concat4, concat5, self.shuffled_domain_label)
             cycFeat, _ = self.basemodel(trsfakeImg.to(self.gpu0))
             concat1, concat2, concat3, concat4, concat5, _ = cycFeat
@@ -321,6 +319,7 @@ class Solver(object):
         for param in self.netDFeat.parameters():
             param.requires_grad = True
 
+        """FeatD"""
         # Train with original domain labels
         DFeatlogit = self.netDFeat(feature.detach().to(self.gpu_map['netDFeat']))
         Dloss_AdvFeat = self.Dgan_loss(DFeatlogit,
@@ -328,6 +327,7 @@ class Solver(object):
         Dloss_AdvFeat.backward()
         self.log_loss['Dloss_AdvFeat'] = Dloss_AdvFeat.item()
 
+        """ImgD"""
         fake_logit, _, _ = self.netDImg(trsfakeImg.detach().to(self.gpu_map['netDImg']))
         self.Dloss_fake = self.gan_loss(fake_logit,
                                         Variable(torch.FloatTensor(fake_logit.data.size()).fill_(self.fake_label))
@@ -368,7 +368,7 @@ class Solver(object):
 
         retain = True if (i_iter+1) % self.config['train']['GAN']['n_critic'] == 0 else False
 
-        self._backprop_weighted_losses(self.loss_lambda['base_model'],
+        self._backprop_weighted_losses(self.loss_lambda['classification'],
                                        aux_over_ths=True,
                                        retain_graph=retain)
         self.optBase.step()
@@ -379,23 +379,37 @@ class Solver(object):
 
 
         if (i_iter+1) % self.config['train']['GAN']['n_critic'] == 0:
-            self.optBase.zero_grad()
             self.optG.zero_grad()
+            self.optBase.zero_grad()
 
             fake_logit, dcls_logit, aux_logit = self.netDImg(trsfakeImg.to(self.gpu_map['netDImg']))
             self.bGloss_fake = self.gan_loss(fake_logit,
                                         Variable(torch.FloatTensor(fake_logit.data.size()).fill_(self.real_label))
                                         .cuda(self.gpu_map['netDImg']))
-            self.bGloss_idt = torch.mean(torch.abs(images - idtfakeImg.to(self.gpu0)))
+
             self.bGloss_cyc = torch.mean(torch.abs(images - cycfakeImg.to(self.gpu0)))
             self.bGloss_dcls = nn.CrossEntropyLoss()(dcls_logit,
                                                     self.shuffled_domain_label.to(self.gpu_map['netDImg']))
-            self.bGloss_auxsem = self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
-            # At this moment we don't care about semantic loss of target data
+            fake_c = self.loss_lambda['base_model_netG']['bGloss_fake']['cur']
+            cyc_c = self.loss_lambda['base_model_netG']['bGloss_cyc']['cur']
+            dcls_c = self.loss_lambda['base_model_netG']['bGloss_dcls']['cur']
 
-            self._backprop_weighted_losses(self.loss_lambda['base_model_netG'],
-                                           self.Dloss_auxsem < self.config['train']['aux_sem_thres'])
+            # Let Generator free from semantic loss
+            self.bGloss = fake_c*self.bGloss_fake.to(self.gpu0) + cyc_c*self.bGloss_cyc.to(self.gpu0)
+            self.bGloss.backward(retain_graph=True)
             self.optG.step()
+            self.optBase.step()
+
+            self.optG.zero_grad()
+            self.Gloss = dcls_c*self.bGloss_dcls.to(self.gpu0)
+            self.Gloss.backward(retain_graph=True)
+            self.optG.step()
+
+            # Feature extractor should be dependent to domain-related gradient
+            self.optBase.zero_grad()
+            aux_c = self.loss_lambda['base_model_netG']['bGloss_auxsem']['cur'] if self.Dloss_auxsem < self.config['train']['aux_sem_thres'] else 0.
+            self.bloss_auxsem = aux_c*self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
+            self.bloss_auxsem.backward(retain_graph=False)
             self.optBase.step()
 
 

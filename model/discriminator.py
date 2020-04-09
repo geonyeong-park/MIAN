@@ -19,6 +19,7 @@ class IMGDiscriminator(nn.Module):
         for i in range(repeat_num):
             downsample.append(spectral_norm(nn.Conv2d(curr_dim, next_dim, kernel_size=4, stride=2, padding=1)))
             downsample.append(nn.LeakyReLU(0.01))
+            buffer_dim = next_dim
             curr_dim = next_dim
             next_dim = next_dim * 2 if not next_dim > 2000 else curr_dim
 
@@ -26,8 +27,8 @@ class IMGDiscriminator(nn.Module):
         self.downsample = nn.Sequential(*downsample)
         self.dropout = nn.Dropout(0.5)
 
-        self.conv_real_fake = nn.Conv2d(next_dim, 1, kernel_size=3, stride=1, padding=1, bias=False)
-        self.conv_domain_cls = nn.Conv2d(next_dim, num_domain, kernel_size=kernel_size, bias=False)
+        self.conv_real_fake = nn.Conv2d(buffer_dim, 1, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv_domain_cls = nn.Conv2d(buffer_dim, num_domain, kernel_size=kernel_size, bias=False)
 
         compress = []
         for i in range(kernel_size // 2):
