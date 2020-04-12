@@ -23,29 +23,28 @@ class IMGDiscriminator(nn.Module):
             curr_dim = next_dim
             next_dim = next_dim * 2 if not next_dim > 2000 else curr_dim
 
-        kernel_size = int(image_size / np.power(2, repeat_num))
+        downsample.append(spectral_norm(nn.Conv2d(curr_dim, 1024, kernel_size=3, stride=2, padding=0)))
         self.downsample = nn.Sequential(*downsample)
         self.dropout = nn.Dropout(0.5)
 
-        self.conv_real_fake = nn.Conv2d(buffer_dim, 1, kernel_size=3, stride=1, padding=1, bias=False)
-        self.conv_domain_cls = nn.Conv2d(buffer_dim, num_domain, kernel_size=kernel_size, bias=False)
+        self.conv_real_fake = nn.Conv2d(1024, 1, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv_domain_cls = nn.Conv2d(1024, num_domain, kernel_size=2, bias=False)
 
         compress = []
-        for i in range(kernel_size // 2):
-            compress.append(spectral_norm(nn.Conv2d(curr_dim, curr_dim // 2, kernel_size=4, stride=2, padding=1)))
-            compress.append(nn.LeakyReLU(0.01))
-            curr_dim = curr_dim // 2
+        compress.append(spectral_norm(nn.Conv2d(1024, 512, kernel_size=3, bias=False)))
+        compress.append(nn.LeakyReLU(0.01))
+        curr_dim = curr_dim // 2
         self.compress = nn.Sequential(*compress)
 
         aux_clf = []
         for i in range(num_domain-1):
-            aux_clf.append(nn.Sequential(*[nn.Linear(curr_dim, num_classes)]))
+            aux_clf.append(nn.Sequential(*[nn.Linear(512, num_classes)]))
 
         self.aux_clf = nn.ModuleList(aux_clf)
 
     def forward(self, x):
         h = self.downsample(x)
-        h = self.dropout(h)
+        # h = self.dropout(h)
 
         out_src = self.conv_real_fake(h)
         out_domain = self.conv_domain_cls(h)

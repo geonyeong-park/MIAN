@@ -57,10 +57,10 @@ def main(config, args):
     gpu = args.gpu
     gpu_map = {
         'basemodel': 'cuda:0',
-        'netDImg': 'cuda:0',
-        'netDFeat': 'cuda:0',
-        'netG': 'cuda:0',
-        'netG_2': 'cuda:0',
+        'netDImg': 'cuda:1',
+        'netDFeat': 'cuda:1',
+        'netG': 'cuda:1',
+        'netG_2': 'cuda:1',
         'all_order': gpu
     }
 
