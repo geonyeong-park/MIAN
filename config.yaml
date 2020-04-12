@@ -56,16 +56,16 @@ train:
         step: 1
     base_only:
       bloss_fake: 
-        init: 0.01 #0.01
-        final: 0.01 #0.01
+        init: 0. #0.01
+        final: 0. #0.01
         step: 1
       bloss_AdvDcls:
         init: 0. #0.1
-        final: 0.1 #0.1
+        final: 0. #0.1
         step: 1000
       bloss_auxsem: 
-        init: 0.01 #0.01
-        final: 0.01 #0.01
+        init: 0. #0.01
+        final: 0. #0.01
         step: 1
     netD:
       Dloss_fakereal:
