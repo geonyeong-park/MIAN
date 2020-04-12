@@ -333,8 +333,6 @@ class Solver(object):
         # ----------------------------
         # 5. Train netG
         # ----------------------------
-
-        """
         if (i_iter+1) % self.config['train']['GAN']['n_critic'] == 0:
             d_onehot = torch.eye(self.num_domain)[self.domain_label].to(self.gpu_map['netDImg'])
             # 5-1. G
@@ -359,8 +357,6 @@ class Solver(object):
                                            auxloss_under_ths=self.Dloss_auxsem < self.config['train']['aux_sem_thres'],
                                            retain_graph=False)
             self.optBase.step()
-        """
-
         # -----------------------------------------------
         # -----------------------------------------------
 

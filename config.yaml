@@ -29,7 +29,7 @@ train:
     lr: 0.0001
     momentum: 0.7
   netG:
-    lr: 0.0001
+    lr: 0.0005
     momentum: 0.7
   lr_decay_power: 0.9
   weight_decay: 0.0005
@@ -56,16 +56,16 @@ train:
         step: 1
     base_only:
       bloss_fake: 
-        init: 0. #0.01
-        final: 0. #0.01
+        init: 0.01 #0.01
+        final: 0.01 #0.01
         step: 1
       bloss_AdvDcls:
         init: 0. #0.1
-        final: 0. #0.1
+        final: 0.1 #0.1
         step: 1000
       bloss_auxsem: 
-        init: 0. #0.01
-        final: 0. #0.01
+        init: 0.01 #0.01
+        final: 0.01 #0.01
         step: 1
     netD:
       Dloss_fakereal:
@@ -83,7 +83,7 @@ train:
 
   GAN: 
     model: 'WGAN_GP'
-    feat: 'Vanila'
+    feat: 'LS'
     GP: 30
     n_critic: 5
   base: 'ResNet'  # VGG or ResNet

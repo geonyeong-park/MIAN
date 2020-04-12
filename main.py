@@ -57,7 +57,7 @@ def main(config, args):
     gpu = args.gpu
     gpu_map = {
         'basemodel': 'cuda:0',
-        'netDImg': 'cuda:0',
+        'netDImg': 'cuda:1',
         'netDFeat': 'cuda:1',
         'netG': 'cuda:1',
         'netG_2': 'cuda:1',
@@ -102,14 +102,11 @@ def main(config, args):
     netDFeat = SEMDiscriminator(conv_dim=512, repeat_num=2,
                                 channel=2048, num_domain=num_domain, feat=True)
 
-    netDImg.apply(weight_init)
-    netDFeat.apply(weight_init)
     netDImg.to(gpu_map['netDImg'])
     netDFeat.to(gpu_map['netDFeat'])
 
     netG = GeneratorRes(num_filters=G_convdim, num_domain=num_domain, repeat_num=G_repeat_num,
                         norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'], num_classes=num_classes+1)
-    netG.apply(weight_init)
 
     # ------------------------
     # 2. Create DataLoader
@@ -123,8 +120,8 @@ def main(config, args):
     # 3. Create Optimizer and Solver
     # ------------------------
 
-    optBase = optim.Adam(basemodel.optim_parameters(base_lr),
-                         betas=(base_momentum, 0.99), weight_decay=weight_decay)
+    optBase = optim.SGD(basemodel.optim_parameters(base_lr),
+                         momentum=base_momentum, weight_decay=weight_decay)
 
     DImg_lr = D_lr
 

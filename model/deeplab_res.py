@@ -77,7 +77,7 @@ class ResNetMulti(nn.Module):
 
     def optim_parameters(self, lr):
         return [{'params': self.get_1x_lr_params_NOscale(), 'lr': lr},
-                {'params': self.get_10x_lr_params(), 'lr': lr}]
+                {'params': self.get_10x_lr_params(), 'lr': 10*lr}]
 
 
 def DeeplabRes(num_classes=21):
