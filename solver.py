@@ -56,12 +56,9 @@ class Solver(object):
         for i in range(self.num_domain):
             self.domain_label[i*self.batch_size: (i+1)*self.batch_size] = i
 
-        if config['train']['GAN']['model'] == 'WGAN_GP':
-            self.gan_loss= torch.nn.BCEWithLogitsLoss()
-        elif config['train']['GAN']['model'] == 'LS':
-            self.gan_loss = torch.nn.MSELoss()
-        #self.Dgan_loss = torch.nn.MSELoss()
-        self.Dgan_loss = torch.nn.BCEWithLogitsLoss()
+        assert config['train']['GAN']['model'] == 'WGAN_GP'
+        self.Dgan_loss = torch.nn.MSELoss()
+        #self.Dgan_loss = torch.nn.BCEWithLogitsLoss()
 
         self.real_label = 0
         self.fake_label = 1
@@ -323,17 +320,17 @@ class Solver(object):
         # Train with original domain labels
         DFeatlogit = self.netDFeat(feature.detach().to(self.gpu_map['netDFeat']))
         Dloss_AdvFeat = self.Dgan_loss(DFeatlogit,
-                                        self._real_domain_label(DFeatlogit, 'Feat'))
+                                       self._real_domain_label(DFeatlogit, 'Feat'))
         Dloss_AdvFeat.backward()
         self.log_loss['Dloss_AdvFeat'] = Dloss_AdvFeat.item()
 
         """ImgD"""
         fake_logit, _, _ = self.netDImg(trsfakeImg.detach().to(self.gpu_map['netDImg']))
-        self.Dloss_fake = self.gan_loss(fake_logit,
-                                        Variable(torch.FloatTensor(fake_logit.data.size()).fill_(self.fake_label))
-                                        .cuda(self.gpu_map['netDImg']))
+        self.Dloss_fake = torch.mean(fake_logit,
+                                    Variable(torch.FloatTensor(fake_logit.data.size()).fill_(self.fake_label))
+                                    .cuda(self.gpu_map['netDImg']))
         real_logit, dcls_logit, aux_logit = self.netDImg(images.to(self.gpu_map['netDImg']))
-        self.Dloss_real = self.gan_loss(real_logit,
+        self.Dloss_real = - torch.mean(real_logit,
                                         Variable(torch.FloatTensor(real_logit.data.size()).fill_(self.real_label))
                                         .cuda(self.gpu_map['netDImg']))
         self.Dloss_dcls = nn.CrossEntropyLoss()(dcls_logit, self.domain_label.to(self.gpu_map['netDImg']))
@@ -383,7 +380,7 @@ class Solver(object):
             self.optBase.zero_grad()
 
             fake_logit, dcls_logit, aux_logit = self.netDImg(trsfakeImg.to(self.gpu_map['netDImg']))
-            self.bGloss_fake = self.gan_loss(fake_logit,
+            self.bGloss_fake = - torch.mean(fake_logit,
                                         Variable(torch.FloatTensor(fake_logit.data.size()).fill_(self.real_label))
                                         .cuda(self.gpu_map['netDImg']))
 
