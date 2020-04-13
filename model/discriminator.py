@@ -58,32 +58,54 @@ class IMGDiscriminator(nn.Module):
         return out_src, out_domain.view(out_domain.size(0), out_domain.size(1)), out_aux
 
 
-class SEMDiscriminator(nn.Module):
-    def __init__(self, conv_dim=32, channel=3, repeat_num=7, num_domain=3, feat=False):
-        super(SEMDiscriminator, self).__init__()
+class ResDiscriminator(nn.Module):
+    def __init__(self, conv_dim=1024, channel=2048, repeat_num=3, num_domain=3):
+        super(ResDiscriminator, self).__init__()
 
         downsample = []
         next_dim = conv_dim
         curr_dim = channel
 
         for i in range(repeat_num):
-            downsample.append(nn.Linear(curr_dim, next_dim))
+            downsample.append(nn.Conv2d(curr_dim, next_dim, kernel_size=3, stride=2, padding=0))
             downsample.append(nn.LeakyReLU(0.01))
             curr_dim = next_dim
-            if not feat:
-                next_dim = next_dim * 2 if not next_dim > 2000 else next_dim
-            else:
-                next_dim = next_dim // 2 if not next_dim < 60 else next_dim
+            next_dim = next_dim // 2 if not next_dim < 60 else next_dim
 
         self.dropout = nn.Dropout(0.5)
         self.downsample = nn.Sequential(*downsample)
         self.conv_domain_cls_patch = nn.Linear(curr_dim, num_domain)
 
     def forward(self, x):
-        if len(x.size()) == 4:
-            x = torch.mean(x, dim=(2,3))
         h = self.downsample(x)
+        h = h.view(h.size()[0], h.size()[1])
         #h = self.dropout(h)
         out_src = self.conv_domain_cls_patch(h)
         return out_src
 
+
+class VGGDiscriminator(nn.Module):
+    def __init__(self, channel=4096, num_domain=3):
+        super(VGGDiscriminator, self).__init__()
+
+        self.conv_domain_cls_patch = nn.Sequential(*[
+            nn.Linear(channel, channel//4),
+            nn.ReLU(inplace=True),
+            nn.Linear(channel//4, num_domain)])
+
+    def forward(self, x):
+        out_src = self.conv_domain_cls_patch(x)
+        return out_src
+
+class AlexDiscriminator(nn.Module):
+    def __init__(self, channel=4096, num_domain=3):
+        super(AlexDiscriminator, self).__init__()
+
+        self.conv_domain_cls_patch = nn.Sequential(*[
+            nn.Linear(channel, channel//4),
+            nn.ReLU(inplace=True),
+            nn.Linear(channel//4, num_domain)])
+
+    def forward(self, x):
+        out_src = self.conv_domain_cls_patch(x)
+        return out_src

@@ -207,14 +207,15 @@ class Solver(object):
 
         return nn.CrossEntropyLoss()(aux_logit_for_each_target_D, label)
 
-    def _netVGG(self, concat1, concat2, concat3, concat4, feature, domain_label):
+    def _netVGGAlex(self, concat1, concat2, concat3, concat4, feature, domain_label, class_label):
         concat1 = concat1.to(self.gpu_map['netG_2'])
         concat2 = concat2.to(self.gpu_map['netG_2'])
         concat3 = concat3.to(self.gpu_map['netG'])
         concat4 = concat4.to(self.gpu_map['netG'])
         feature = feature.to(self.gpu_map['netG'])
         domain_label = domain_label.to(self.gpu_map['netG'])
-        return self.netG(concat1, concat2, concat3, concat4, feature, domain_label)
+        class_label = class_label.to(self.gpu_map['netG'])
+        return self.netG(concat1, concat2, concat3, concat4, feature, domain_label, class_label)
 
     def _backprop_weighted_losses(self, lambdas, auxloss_under_ths, retain_graph=False):
         if not auxloss_under_ths:
@@ -260,27 +261,27 @@ class Solver(object):
 
         """ Classification and Adversarial Loss (Basemodel) """
         feature, pred = self.basemodel(images)
-        if self.base == 'VGG':
-            concat1, concat2, concat3, concat4, concat5, Dfeature = feature
+        if self.base == 'VGG' or self.base == 'Alex':
+            [concat1, concat2, concat3, concat4, concat5, feature] = feature
 
         """ Idt, Fake, Cycle, DCls, Semantic Loss (Generator) """
+        label_onehot = torch.cat([
+            torch.eye(self.num_classes+1)[labels],
+            torch.eye(self.num_classes+1)[-1].unsqueeze(0).repeat(self.batch_size, 1)], dim=0).to(self.gpu_map['netG'])
         if self.base == 'ResNet':
-            label_onehot = torch.cat([
-                torch.eye(self.num_classes+1)[labels],
-                torch.eye(self.num_classes+1)[-1].unsqueeze(0).repeat(self.batch_size, 1)], dim=0).to(self.gpu_map['netG'])
             trsfakeImg = self.netG(feature.to(self.gpu_map['netG']), self.domain_label, label_onehot)
-        elif self.base == 'VGG':
-            trsfakeImg = self._netVGG(concat1, concat2, concat3, concat4, concat5, self.domain_label)
+        elif self.base == 'VGG' or self.base == 'Alex':
+            trsfakeImg = self._netVGGAlex(concat1, concat2, concat3, concat4, concat5, self.domain_label, label_onehot)
 
         # -----------------------------
         # 3. Train Discriminators
         # -----------------------------
+        """
         for param in self.netDImg.parameters():
             param.requires_grad = True
         for param in self.netDFeat.parameters():
             param.requires_grad = True
 
-        """FeatD"""
         # Train with original domain labels
         DFeatlogit = self.netDFeat(feature.detach().to(self.gpu_map['netDFeat']))
         Dloss_AdvFeat = self.Dgan_loss(DFeatlogit,
@@ -288,7 +289,6 @@ class Solver(object):
         Dloss_AdvFeat.backward()
         self.log_loss['Dloss_AdvFeat'] = Dloss_AdvFeat.item()
 
-        """ImgD"""
         fake_logit, _, _ = self.netDImg(trsfakeImg.detach().to(self.gpu_map['netDImg']))
         self.Dloss_fake = torch.mean(fake_logit)
         real_logit, dcls_logit, aux_logit = self.netDImg(images.to(self.gpu_map['netDImg']))
@@ -307,6 +307,7 @@ class Solver(object):
                                        retain_graph=True)
         self.optDFeat.step()
         self.optDImg.step()
+        """
         # ----------------------------
         # 4. Train Basemodel
         # ----------------------------
@@ -333,6 +334,7 @@ class Solver(object):
         # ----------------------------
         # 5. Train netG
         # ----------------------------
+        """
         if (i_iter+1) % self.config['train']['GAN']['n_critic'] == 0:
             d_onehot = torch.eye(self.num_domain)[self.domain_label].to(self.gpu_map['netDImg'])
             # 5-1. G
@@ -357,6 +359,7 @@ class Solver(object):
                                            auxloss_under_ths=self.Dloss_auxsem < self.config['train']['aux_sem_thres'],
                                            retain_graph=False)
             self.optBase.step()
+        """
         # -----------------------------------------------
         # -----------------------------------------------
 
@@ -394,10 +397,11 @@ class Solver(object):
                 image_fake_list = [image_fixed]
                 for d_fixed in self._fixed_test_domain_label(num_sample=self.num_domain):
                     feature, _ = self.basemodel(image_fixed.to(self.gpu0))
-                    if self.base == 'VGG':
+                    if self.base == 'VGG' or self.base == 'Alex':
                         concat1, concat2, concat3, concat4, concat5, _ = feature
-                        image_fake = self._netVGG(concat1, concat2, concat3, concat4, concat5,
-                                                        d_fixed.to(self.gpu_map['netG']))
+                        image_fake = self._netVGGAlex(concat1, concat2, concat3, concat4, concat5,
+                                                      d_fixed.to(self.gpu_map['netG']),
+                                                      label_fixed_onehot.to(self.gpu_map['netG']))
                     else:
                         image_fake = self.netG(feature.to(self.gpu_map['netG']),
                                                d_fixed.to(self.gpu_map['netG']),

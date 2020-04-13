@@ -6,37 +6,39 @@ import numpy as np
 
 
 class DecoderBlock(nn.Module):
-    def __init__(self, feat_channels, prev_channels, middle_channels, out_channels, num_domain, norm, gpu, skip_connection=True, upsample=True):
+    def __init__(self, in_channels, middle_channels, out_channels, num_domain, norm, gpu, upsample=True,
+                 up_kernel=4, up_stride=2, up_pad=1):
         super(DecoderBlock, self).__init__()
+        self.in_channels = in_channels
         self.gpu = gpu
         self.num_domain = num_domain
         self.upsample = upsample
-        self.skip_connection = skip_connection
 
-        if skip_connection:
-            assert prev_channels != 0
-            self.block = ResidualBlock(prev_channels, prev_channels, num_domain, norm).to(gpu)
-
-        self.conv = nn.Conv2d(feat_channels+prev_channels, middle_channels, kernel_size=3, stride=1, padding=1, bias=False).to(gpu) #Concat domain code everytime
-        self.cbn = ConditionalBatchOrInstanceNorm2d(middle_channels, num_domain, norm).to(gpu)
+        self.conv = nn.Conv2d(in_channels+num_domain, middle_channels, kernel_size=3, stride=1, padding=1, bias=False).to(gpu) #Concat domain code everytime
+        self.cn = ConditionalBatchOrInstanceNorm2d(middle_channels, num_domain, norm).to(gpu)
         self.relu = nn.ReLU(inplace=True).to(gpu)
+        self.block = ResidualBlock(middle_channels, middle_channels, num_domain, norm).to(gpu)
 
         if upsample:
-            self.upsample = UpsamplingBlock(middle_channels, out_channels, num_domain, norm).to(gpu)
+            self.upsample = UpsamplingBlock(middle_channels, out_channels, num_domain, norm,
+                                            up_kernel, up_stride, up_pad).to(gpu)
         else:
             assert middle_channels == out_channels
 
-    def forward(self, feature, c, prev_feat=None):
-        if prev_feat is not None:
-            assert self.skip_connection == True
-            transformed_prev_skip = self.block(prev_feat, c)
-            feature = torch.cat([feature, transformed_prev_skip], 1)
+    def _tile_domain_code(self, feature, domain):
+        w, h = feature.size()[-2], feature.size()[-1]
+        domain_code = torch.eye(self.num_domain)[domain.long()].view(-1, self.num_domain, 1, 1).repeat(1, 1, w, h).to(self.gpu)
+        return torch.cat([feature, domain_code], dim=1).to(self.gpu)
 
-        h = self.conv(feature)
-        h = self.cbn(h, c)
+    def forward(self, x, c):
+        h = self._tile_domain_code(x, c)
+        h = self.conv(h)
+        h = self.cn(h, c)
         h = self.relu(h)
+        h = self.block(h, c)
         if self.upsample:
-            return self.upsample(h, c)
+            img = self.upsample(h, c)
+            return img
         else:
             return h
 
@@ -84,7 +86,6 @@ class ResidualBlock(nn.Module):
                 spectral_norm(self.conv1),
                 self.a1,
                 spectral_norm(self.conv2),
-                self.a1
             ])
 
         else:
@@ -103,10 +104,10 @@ class ResidualBlock(nn.Module):
 
 class UpsamplingBlock(nn.Module):
     """Residual Block with conditional batch normalization."""
-    def __init__(self, dim_in, dim_out, num_domain, norm):
+    def __init__(self, dim_in, dim_out, num_domain, norm, kernel=4, stride=2, pad=1):
         super(UpsamplingBlock, self).__init__()
         assert norm == 'CondBN' or norm == 'CondIN' or norm == 'BN' or norm == 'IN'
-        self.conv = nn.ConvTranspose2d(dim_in, dim_out, kernel_size=4, stride=2, padding=1, bias=False)
+        self.conv = nn.ConvTranspose2d(dim_in, dim_out, kernel_size=kernel, stride=stride, padding=pad, bias=False)
         self.cbn = ConditionalBatchOrInstanceNorm2d(dim_out, num_domain, norm)
         self.a = nn.ReLU(inplace=True)
 
@@ -119,38 +120,42 @@ class UpsamplingBlock(nn.Module):
 
 
 """
+
 class DecoderBlock(nn.Module):
-    def __init__(self, in_channels, middle_channels, out_channels, num_domain, norm, gpu, upsample=True):
+    def __init__(self, feat_channels, prev_channels, middle_channels, out_channels, num_domain, norm, gpu, skip_connection=True, upsample=True):
         super(DecoderBlock, self).__init__()
-        self.in_channels = in_channels
         self.gpu = gpu
         self.num_domain = num_domain
         self.upsample = upsample
+        self.skip_connection = skip_connection
 
-        self.conv = nn.Conv2d(in_channels+num_domain, middle_channels, kernel_size=3, stride=1, padding=1, bias=False).to(gpu) #Concat domain code everytime
-        self.cn = ConditionalBatchOrInstanceNorm2d(middle_channels, num_domain, norm).to(gpu)
+        if skip_connection:
+            assert prev_channels != 0
+            self.block = ResidualBlock(prev_channels, prev_channels, num_domain, norm).to(gpu)
+
+        self.conv = nn.Conv2d(feat_channels+prev_channels, middle_channels, kernel_size=3, stride=1, padding=1, bias=False).to(gpu) #Concat domain code everytime
+        self.cbn = ConditionalBatchOrInstanceNorm2d(middle_channels, num_domain, norm).to(gpu)
         self.relu = nn.ReLU(inplace=True).to(gpu)
-        self.block = ResidualBlock(middle_channels, middle_channels, num_domain, norm).to(gpu)
 
         if upsample:
             self.upsample = UpsamplingBlock(middle_channels, out_channels, num_domain, norm).to(gpu)
         else:
             assert middle_channels == out_channels
 
-    def _tile_domain_code(self, feature, domain):
-        w, h = feature.size()[-2], feature.size()[-1]
-        domain_code = torch.eye(self.num_domain)[domain.long()].view(-1, self.num_domain, 1, 1).repeat(1, 1, w, h).to(self.gpu)
-        return torch.cat([feature, domain_code], dim=1).to(self.gpu)
+    def forward(self, feature, c, prev_feat=None):
+        if prev_feat is not None:
+            assert self.skip_connection == True
+            transformed_prev_skip = self.block(prev_feat, c)
+            feature = torch.cat([feature, transformed_prev_skip], 1)
 
-    def forward(self, x, c):
-        h = self._tile_domain_code(x, c)
-        h = self.conv(h)
-        h = self.cn(h, c)
+        h = self.conv(feature)
+        h = self.cbn(h, c)
         h = self.relu(h)
-        h = self.block(h, c)
         if self.upsample:
-            img = self.upsample(h, c)
-            return img
+            return self.upsample(h, c)
         else:
             return h
 """
+
+
+
