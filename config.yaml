@@ -18,8 +18,8 @@ data:
 
 
 train:
-  num_steps: 250000
-  num_steps_stop: 150000
+  num_steps: 100000
+  num_steps_stop: 3000
   batch_size: 32
 
   base_model:
@@ -47,8 +47,8 @@ train:
         step: 1.
     netG:
       Gloss_fake: 
-        init: 0.1
-        final: 0.1
+        init: 1.
+        final: 1.
         step: 1
       Gloss_cyc:
         init: 1.
@@ -56,16 +56,16 @@ train:
         step: 1
     base_only:
       bloss_fake: 
-        init: 0.01 #0.01
-        final: 0.01 #0.01
+        init: 0.01 
+        final: 0.01 
         step: 1
       bloss_AdvDcls:
-        init: 0. #0.1
-        final: 0.1 #0.1
+        init: 0.1 
+        final: 0.1 
         step: 1
       bloss_auxsem: 
-        init: 0.01 #0.01
-        final: 0.01 #0.01
+        init: 0.01 
+        final: 0.01 
         step: 1
     netD:
       Dloss_fakereal:
@@ -82,8 +82,9 @@ train:
         step: 1
 
   GAN: 
-    model: 'WGAN_GP'
-    feat: 'LS'
+    main: 'WGAN_GP'
+    featAdv: 'LS'
+    pixAdv: 'LS'
     GP: 30
     n_critic: 5
   base: 'VGG'  # Alex, VGG, ResNet

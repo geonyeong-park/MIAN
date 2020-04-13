@@ -38,6 +38,17 @@ def get_arguments():
                         help="")
     parser.add_argument("--exp_detail", type=str, default=None, required=False,
                         help="")
+
+    # Test arguments
+    parser.add_argument("--advcoeff", type=float, default=None, required=False,
+                        help="")
+    parser.add_argument("--DGlr", type=float, default=None, required=False,
+                        help="")
+    parser.add_argument("--pixAdv", type=str, default=None, required=False,
+                        help="")
+    parser.add_argument("--Gfake_cyc", type=float, default=None, required=False,
+                        help="")
+
     return parser.parse_args()
 
 
@@ -51,6 +62,33 @@ def main(config, args):
     print('gpus_tobe_used: {}'.format(gpus_tobe_used))
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpus_tobe_used)
+
+    # -------------------------------
+    # Setting Test arguments
+    if args.advcoeff is not None:
+        c = args.advcoeff
+        print('advcoeff: ', c)
+        config['train']['lambda']['base_only']['bloss_AdvDcls']['init'] = c
+        config['train']['lambda']['base_only']['bloss_AdvDcls']['final'] = c
+        config['train']['lambda']['base_only']['bloss_fake']['init'] = 0.1*c
+        config['train']['lambda']['base_only']['bloss_fake']['final'] = 0.1*c
+    if args.DGlr is not None:
+        lr = args.DGlr
+        print('DGlr: ', lr)
+        config['train']['netD']['lr'] = lr
+        config['train']['netG']['lr'] = lr
+    if args.pixAdv is not None:
+        p = args.pixAdv
+        print('pixAdv: ', p)
+        assert p == 'LS' or p == 'Vanila'
+        config['train']['GAN']['pixAdv'] = p
+    if args.Gfake_cyc is not None:
+        c = args.Gfake_cyc
+        print('Gfake_cyc: ', c)
+        config['train']['lambda']['netG']['Gloss_cyc']['init'] = c
+        config['train']['lambda']['netG']['Gloss_cyc']['final'] = c
+        config['train']['lambda']['netG']['Gloss_fake']['init'] = c
+        config['train']['lambda']['netG']['Gloss_fake']['final'] = c
 
     # -------------------------------
 
@@ -133,6 +171,9 @@ def main(config, args):
         netG = GeneratorAlex(num_filters=G_convdim, num_domain=num_domain,
                             norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'], num_classes=num_classes+1)
 
+    netDImg.apply(weight_init)
+    netDFeat.apply(weight_init)
+    netG.apply(weight_init)
     # ------------------------
     # 2. Create DataLoader
     # ------------------------

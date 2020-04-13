@@ -56,11 +56,17 @@ class Solver(object):
         for i in range(self.num_domain):
             self.domain_label[i*self.batch_size: (i+1)*self.batch_size] = i
 
-        assert config['train']['GAN']['model'] == 'WGAN_GP'
-        if config['train']['GAN']['feat'] == 'Vanila':
-            self.Dgan_loss = torch.nn.BCEWithLogitsLoss()
-        elif config['train']['GAN']['feat'] == 'LS':
-            self.Dgan_loss = torch.nn.MSELoss()
+        assert config['train']['GAN']['main'] == 'WGAN_GP'
+
+        if config['train']['GAN']['featAdv'] == 'Vanila':
+            self.FeatAdv_loss = torch.nn.BCEWithLogitsLoss()
+        elif config['train']['GAN']['featAdv'] == 'LS':
+            self.FeatAdv_loss = torch.nn.MSELoss()
+
+        if config['train']['GAN']['pixAdv'] == 'Vanila':
+            self.PixAdv_loss = torch.nn.BCEWithLogitsLoss()
+        elif config['train']['GAN']['pixAdv'] == 'LS':
+            self.PixAdv_loss = torch.nn.MSELoss()
 
         self.real_label = 0
         self.fake_label = 1
@@ -283,8 +289,8 @@ class Solver(object):
 
         # Train with original domain labels
         DFeatlogit = self.netDFeat(feature.detach().to(self.gpu_map['netDFeat']))
-        Dloss_AdvFeat = self.Dgan_loss(DFeatlogit,
-                                       self._real_domain_label(DFeatlogit, 'Feat'))
+        Dloss_AdvFeat = self.FeatAdv_loss(DFeatlogit,
+                                          self._real_domain_label(DFeatlogit, 'Feat'))
         Dloss_AdvFeat.backward()
         self.log_loss['Dloss_AdvFeat'] = Dloss_AdvFeat.item()
 
@@ -292,7 +298,10 @@ class Solver(object):
         self.Dloss_fake = torch.mean(fake_logit)
         real_logit, dcls_logit, aux_logit = self.netDImg(images.to(self.gpu_map['netDImg']))
         self.Dloss_real = - torch.mean(real_logit)
-        self.Dloss_dcls = nn.CrossEntropyLoss()(dcls_logit, self.domain_label.to(self.gpu_map['netDImg']))
+
+
+        d_onehot = torch.eye(self.num_domain)[self.domain_label].to(self.gpu_map['netDImg'])
+        self.Dloss_dcls = self.PixAdv_loss(dcls_logit, d_onehot)
         self.Dloss_auxsem = self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
 
         self.Dloss_gp = self._gradient_penalty(real=images.to(self.gpu_map['netDImg']),
@@ -319,8 +328,8 @@ class Solver(object):
                                                labels)
 
         DFeatlogit = self.netDFeat(feature.to(self.gpu_map['netDFeat']))
-        self.bloss_AdvFeat = self.Dgan_loss(DFeatlogit,
-                                            self._fake_domain_label(DFeatlogit, 'Feat'))
+        self.bloss_AdvFeat = self.FeatAdv_loss(DFeatlogit,
+                                               self._fake_domain_label(DFeatlogit, 'Feat'))
 
         retain = True if (i_iter+1) % self.config['train']['GAN']['n_critic'] == 0 else False
 
@@ -333,7 +342,6 @@ class Solver(object):
         # 5. Train netG
         # ----------------------------
         if (i_iter+1) % self.config['train']['GAN']['n_critic'] == 0:
-            d_onehot = torch.eye(self.num_domain)[self.domain_label].to(self.gpu_map['netDImg'])
             # 5-1. G
             self.optG.zero_grad()
 
@@ -350,7 +358,7 @@ class Solver(object):
             self.optBase.zero_grad()
 
             self.bloss_fake = self.Gloss_fake
-            self.bloss_AdvDcls = nn.BCEWithLogitsLoss()(dcls_logit, 1 - d_onehot)
+            self.bloss_AdvDcls = self.PixAdv_loss(dcls_logit, 1 - d_onehot)
             self.bloss_auxsem = self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
             self._backprop_weighted_losses(self.loss_lambda['base_only'],
                                            auxloss_under_ths=self.Dloss_auxsem < self.config['train']['aux_sem_thres'],
@@ -446,4 +454,8 @@ class Solver(object):
                                                       np.mean(accList))
         self.logger.scalar_summary('metrics/val_acc', np.mean(accList), i_iter+1)
         print(info_str)
+
+        with open(os.path.join(self.log_dir, 'val_result.txt'), 'a') as f:
+            f.write(info_str+'\n')
+            f.close()
 
