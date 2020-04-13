@@ -276,7 +276,6 @@ class Solver(object):
         # -----------------------------
         # 3. Train Discriminators
         # -----------------------------
-        """
         for param in self.netDImg.parameters():
             param.requires_grad = True
         for param in self.netDFeat.parameters():
@@ -307,7 +306,6 @@ class Solver(object):
                                        retain_graph=True)
         self.optDFeat.step()
         self.optDImg.step()
-        """
         # ----------------------------
         # 4. Train Basemodel
         # ----------------------------
@@ -334,7 +332,6 @@ class Solver(object):
         # ----------------------------
         # 5. Train netG
         # ----------------------------
-        """
         if (i_iter+1) % self.config['train']['GAN']['n_critic'] == 0:
             d_onehot = torch.eye(self.num_domain)[self.domain_label].to(self.gpu_map['netDImg'])
             # 5-1. G
@@ -359,7 +356,6 @@ class Solver(object):
                                            auxloss_under_ths=self.Dloss_auxsem < self.config['train']['aux_sem_thres'],
                                            retain_graph=False)
             self.optBase.step()
-        """
         # -----------------------------------------------
         # -----------------------------------------------
 

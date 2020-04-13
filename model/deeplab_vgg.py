@@ -5,6 +5,7 @@ import torch
 import torchvision
 from torchvision import models
 import numpy as np
+from utils.mmd import mmd_rbf_noaccelerate
 
 
 class VGGMulti(nn.Module):
@@ -14,6 +15,7 @@ class VGGMulti(nn.Module):
         self.num_classes = num_classes
         self.pool = nn.MaxPool2d(2, 2)
         encoder = torchvision.models.vgg16(pretrained=True).features
+        classifier = torchvision.models.vgg16(pretrained=True).classifier
 
         self.relu = nn.ReLU(inplace=True)
 
@@ -48,27 +50,27 @@ class VGGMulti(nn.Module):
                                    encoder[28],
                                    self.relu)
 
-        self.compress = nn.Conv2d(512, 1024, kernel_size=4, stride=2, padding=1)
-        self.clf = self._make_pred_layer(num_classes)
+        self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
+        self.compress = nn.Sequential(*list(classifier)[:-1])
 
-    def _make_pred_layer(self, num_classes):
-        return nn.Sequential(*[
-            nn.Linear(1024, 512),
-            self.relu,
-            nn.Linear(512, 256),
-            self.relu,
-            nn.Linear(256, num_classes)])
+        n_features = classifier[6].in_features
+        fc = torch.nn.Linear(n_features, num_classes)
+        self.predict = fc
 
     def forward(self, x):
         conv1 = self.conv1(x)
         conv2 = self.conv2(self.pool(conv1))
         conv3 = self.conv3(self.pool(conv2))
         conv4 = self.conv4(self.pool(conv3))
-        conv5 = self.conv5(self.pool(conv4))  # conv5 is not pooled at this moment
+        conv5 = self.conv5(self.pool(conv4))
 
-        h = self.relu(self.compress(self.pool(conv5))).view(conv5.size()[0], 1024)
-        pred = self.clf(h)
+        h = self.pool(conv5)
+        h = self.avgpool(h)
+        h = torch.flatten(h, 1)
+        h = self.compress(h)
         feature = [conv1, conv2, conv3, conv4, conv5, h]
+
+        pred = self.predict(h)
         return feature, pred
 
     def get_1x_lr_params_NOscale(self):
@@ -100,7 +102,7 @@ class VGGMulti(nn.Module):
         which does the classification of pixel into classes
         """
         b = []
-        b.append(self.clf.parameters())
+        b.append(self.predict.parameters())
 
         for j in range(len(b)):
             for i in b[j]:
@@ -108,7 +110,7 @@ class VGGMulti(nn.Module):
 
     def optim_parameters(self, lr):
         return [{'params': self.get_1x_lr_params_NOscale(), 'lr': lr},
-                {'params': self.get_10x_lr_params(), 'lr': lr}]
+                {'params': self.get_10x_lr_params(), 'lr': lr*10}]
 
 
 def DeeplabVGG(num_classes=21, vgg16_path=None):

@@ -10,9 +10,9 @@ data:
   input_size: 256
   crop_size: 224
   num_classes: 31
-  source: ['Webcam']
+  source: ['Webcam', 'DSLR']
   target: 'Amazon'
-  num_domain: 2
+  num_domain: 3
   num_workers: 1
   ignore_label: 255
 
@@ -47,38 +47,38 @@ train:
         step: 1.
     netG:
       Gloss_fake: 
-        init: 0.
-        final: 0.
+        init: 0.1
+        final: 0.1
         step: 1
       Gloss_cyc:
-        init: 0.
-        final: 0.
+        init: 1.
+        final: 1.
         step: 1
     base_only:
       bloss_fake: 
-        init: 0. #0.01
-        final: 0. #0.01
+        init: 0.01 #0.01
+        final: 0.01 #0.01
         step: 1
       bloss_AdvDcls:
         init: 0. #0.1
-        final: 0. #0.1
+        final: 0.1 #0.1
         step: 1
       bloss_auxsem: 
-        init: 0. #0.01
-        final: 0. #0.01
+        init: 0.01 #0.01
+        final: 0.01 #0.01
         step: 1
     netD:
       Dloss_fakereal:
-        init: 0.
-        final: 0.
+        init: 1.
+        final: 1.
         step: 1
       Dloss_dcls:
-        init: 0.
-        final: 0.
+        init: 10.
+        final: 10.
         step: 1
       Dloss_auxsem:
-        init: 0.
-        final: 0.
+        init: 1.
+        final: 1.
         step: 1
 
   GAN: 
