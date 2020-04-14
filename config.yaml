@@ -7,6 +7,7 @@ exp_setting:
 
 
 data:
+  task: 'office'  # office, office_caltech_10
   input_size: 256
   crop_size: 224
   num_classes: 31
@@ -19,7 +20,7 @@ data:
 
 train:
   num_steps: 100000
-  num_steps_stop: 3000
+  num_steps_stop: 10000
   batch_size: 32
 
   base_model:
@@ -33,7 +34,7 @@ train:
     momentum: 0.7
   lr_decay_power: 0.85
   weight_decay: 0.0005
-  aux_sem_thres: 0.1
+  aux_sem_thres: 0.3
 
   lambda:
     base_model:
@@ -46,7 +47,7 @@ train:
         final: 0.1
         step: 1.
     netG:
-      Gloss_fake: 
+      Gloss_fake:
         init: 1.
         final: 1.
         step: 1
@@ -55,17 +56,17 @@ train:
         final: 1.
         step: 1
     base_only:
-      bloss_fake: 
-        init: 0.01 
-        final: 0.01 
+      bloss_fake:
+        init: 0.005
+        final: 0.005
         step: 1
       bloss_AdvDcls:
-        init: 0.1 
-        final: 0.1 
+        init: 0.005
+        final: 0.005
         step: 1
-      bloss_auxsem: 
-        init: 0.01 
-        final: 0.01 
+      bloss_auxsem:
+        init: 0.01
+        final: 0.01
         step: 1
     netD:
       Dloss_fakereal:
@@ -77,8 +78,8 @@ train:
         final: 10.
         step: 1
       Dloss_auxsem:
-        init: 1.
-        final: 1.
+        init: 10.
+        final: 10.
         step: 1
 
   GAN: 

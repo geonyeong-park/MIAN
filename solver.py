@@ -293,6 +293,7 @@ class Solver(object):
                                           self._real_domain_label(DFeatlogit, 'Feat'))
         Dloss_AdvFeat.backward()
         self.log_loss['Dloss_AdvFeat'] = Dloss_AdvFeat.item()
+        self.optDFeat.step()
 
         fake_logit, _, _ = self.netDImg(trsfakeImg.detach().to(self.gpu_map['netDImg']))
         self.Dloss_fake = torch.mean(fake_logit)
@@ -313,7 +314,6 @@ class Solver(object):
         self._backprop_weighted_losses(self.loss_lambda['netD'],
                                        auxloss_under_ths=True,
                                        retain_graph=True)
-        self.optDFeat.step()
         self.optDImg.step()
         # ----------------------------
         # 4. Train Basemodel
@@ -366,7 +366,6 @@ class Solver(object):
             self.optBase.step()
         # -----------------------------------------------
         # -----------------------------------------------
-
 
         if (i_iter+1) % self.log_step == 0:
             et = time.time() - self.start_time

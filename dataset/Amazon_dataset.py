@@ -20,6 +20,7 @@ class AmazonDataSet(data.Dataset):
         self.cropsize = cropsize
         self.img_folders = sorted(glob(self.root + '/*'))
         self.files = []
+        self.split = split
 
         for i, folder in enumerate(self.img_folders):
             for img in glob(folder + '/*'):
@@ -33,7 +34,7 @@ class AmazonDataSet(data.Dataset):
             assert resize >= cropsize
             if resize > cropsize:
                 image_transform = [torchvision.transforms.Resize(self.resize, interpolation=Image.BICUBIC),
-                                torchvision.transforms.RandomCrop(self.cropsize)] + base_transform
+                                   torchvision.transforms.RandomCrop(self.cropsize)] + base_transform
             else:
                 image_transform = [torchvision.transforms.Resize(self.cropsize, interpolation=Image.BICUBIC)] + base_transform
 
@@ -52,6 +53,5 @@ class AmazonDataSet(data.Dataset):
         label = datafiles["label"]
         image = self.image_transform(image)
         label = torch.from_numpy(np.array(label, np.int32, copy=False))
-
         return image, label
 

@@ -70,8 +70,8 @@ def main(config, args):
         print('advcoeff: ', c)
         config['train']['lambda']['base_only']['bloss_AdvDcls']['init'] = c
         config['train']['lambda']['base_only']['bloss_AdvDcls']['final'] = c
-        config['train']['lambda']['base_only']['bloss_fake']['init'] = 0.1*c
-        config['train']['lambda']['base_only']['bloss_fake']['final'] = 0.1*c
+        config['train']['lambda']['base_only']['bloss_fake']['init'] = c
+        config['train']['lambda']['base_only']['bloss_fake']['final'] = c
     if args.DGlr is not None:
         lr = args.DGlr
         print('DGlr: ', lr)
@@ -104,6 +104,7 @@ def main(config, args):
         'all_order': gpu
     }
 
+    task = config['data']['task']
     num_classes = config['data']['num_classes']
     input_size = config['data']['input_size']
     cropped_size = config['data']['crop_size']
@@ -179,7 +180,7 @@ def main(config, args):
     # ------------------------
     loader = MultiDomainLoader(dataset, '.', input_size, cropped_size, batch_size=batch_size,
                                shuffle=True, num_workers=num_workers, half_crop=None,
-                               task='office')
+                               task=task)
     TargetLoader = loader.TargetLoader
 
     # ------------------------

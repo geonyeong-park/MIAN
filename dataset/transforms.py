@@ -51,8 +51,6 @@ class HalfCrop(object):
             output.append(tensor[..., ..., x1:x1 + tw_half].contiguous())
         return output
 
-
-
 class RandomHorizontalFlip(object):
     """Randomly horizontally flips the given PIL.Image with a probability of 0.5
     """

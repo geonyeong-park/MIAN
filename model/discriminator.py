@@ -24,22 +24,20 @@ class IMGDiscriminator(nn.Module):
             next_dim = next_dim * 2 if not next_dim > 2000 else curr_dim
 
         downsample.append(spectral_norm(nn.Conv2d(curr_dim, 1024, kernel_size=3, stride=2, padding=0)))
+        downsample.append(nn.LeakyReLU(0.01))
         self.downsample = nn.Sequential(*downsample)
         self.dropout = nn.Dropout(0.5)
 
         self.conv_real_fake = nn.Conv2d(1024, 1, kernel_size=3, stride=1, padding=1, bias=False)
-        self.conv_domain_cls = nn.Conv2d(1024, num_domain, kernel_size=2, bias=False)
-
-        compress = []
-        compress.append(spectral_norm(nn.Conv2d(1024, 512, kernel_size=3, bias=False)))
-        compress.append(nn.LeakyReLU(0.01))
-        curr_dim = curr_dim // 2
-        self.compress = nn.Sequential(*compress)
+        self.conv_domain_cls = nn.Conv2d(1024, num_domain, kernel_size=3, padding=0, bias=False)
 
         aux_clf = []
         for i in range(num_domain-1):
-            aux_clf.append(nn.Sequential(*[nn.Linear(512, num_classes)]))
-
+            aux_clf.append(nn.Sequential(*[
+                ResidualBlock(1024, 1024, num_domain=num_domain, norm='SN'),
+                ResidualBlock(1024, 1024, num_domain=num_domain, norm='SN'),
+                ResidualBlock(1024, 1024, num_domain=num_domain, norm='SN'),
+                nn.Conv2d(1024, num_classes, kernel_size=3, padding=0, bias=False)]))
         self.aux_clf = nn.ModuleList(aux_clf)
 
     def forward(self, x):
@@ -48,14 +46,9 @@ class IMGDiscriminator(nn.Module):
 
         out_src = self.conv_real_fake(h)
         out_domain = self.conv_domain_cls(h)
-        out_domain = torch.mean(out_domain.view(out_domain.size(0), out_domain.size(1), -1), dim=2)
-
-        h = self.compress(h)
-        h = h.view(h.size(0), h.size(1))
-
         out_aux = torch.cat([clf(h).unsqueeze_(0) for clf in self.aux_clf], dim=0)
 
-        return out_src, out_domain.view(out_domain.size(0), out_domain.size(1)), out_aux
+        return out_src, out_domain.view(out_domain.size(0), out_domain.size(1)), out_aux.view(out_aux.size(0), out_aux.size(1), out_aux.size(2))
 
 
 class ResDiscriminator(nn.Module):
