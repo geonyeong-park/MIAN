@@ -361,7 +361,7 @@ class Solver(object):
             self.bloss_AdvDcls = self.PixAdv_loss(dcls_logit, 1 - d_onehot)
             self.bloss_auxsem = self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
             self._backprop_weighted_losses(self.loss_lambda['base_only'],
-                                           auxloss_under_ths=self.Dloss_auxsem < self.config['train']['aux_sem_thres'],
+                                           auxloss_under_ths=True,
                                            retain_graph=False)
             self.optBase.step()
         # -----------------------------------------------
