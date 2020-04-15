@@ -7,13 +7,13 @@ exp_setting:
 
 
 data:
-  task: 'office'  # office, office_caltech_10
+  task: 'office_caltech_10'  # office, office_caltech_10
   input_size: 256
   crop_size: 224
   num_classes: 31
-  source: ['Webcam', 'DSLR']
+  source: ['Webcam', 'DSLR', 'Caltech']
   target: 'Amazon'
-  num_domain: 3
+  num_domain: 4
   num_workers: 1
   ignore_label: 255
 
@@ -21,7 +21,7 @@ data:
 train:
   num_steps: 100000
   num_steps_stop: 10000
-  batch_size: 32
+  batch_size: 16
 
   base_model:
     lr: 0.0001
@@ -57,12 +57,12 @@ train:
         step: 1
     base_only:
       bloss_fake:
-        init: 0.005
-        final: 0.005
+        init: 0.01
+        final: 0.01
         step: 1
       bloss_AdvDcls:
-        init: 0.005
-        final: 0.005
+        init: 0.01
+        final: 0.01
         step: 1
       bloss_auxsem:
         init: 0.01

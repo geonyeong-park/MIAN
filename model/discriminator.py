@@ -36,7 +36,6 @@ class IMGDiscriminator(nn.Module):
             aux_clf.append(nn.Sequential(*[
                 ResidualBlock(1024, 1024, num_domain=num_domain, norm='SN'),
                 ResidualBlock(1024, 1024, num_domain=num_domain, norm='SN'),
-                ResidualBlock(1024, 1024, num_domain=num_domain, norm='SN'),
                 nn.Conv2d(1024, num_classes, kernel_size=3, padding=0, bias=False)]))
         self.aux_clf = nn.ModuleList(aux_clf)
 
