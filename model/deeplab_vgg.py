@@ -52,7 +52,8 @@ class VGGMulti(nn.Module):
                                    self.relu)
 
         self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
-        self.compress = nn.Sequential(*list(classifier)[:-1])
+        self.compress1 = nn.Sequential(*list(classifier)[:2])
+        self.compress2 = nn.Sequential(*list(classifier)[2:-1])
 
         n_features = classifier[6].in_features
         fc = torch.nn.Linear(n_features, num_classes)
@@ -68,9 +69,11 @@ class VGGMulti(nn.Module):
         h = self.pool(conv5)
         h = self.avgpool(h)
         h = torch.flatten(h, 1)
-        h = self.compress(h)
-        pred = self.predict(h)
-        return h, pred
+
+        h_pix = self.compress1(h)
+        h_adv = self.compress2(h_pix)
+        pred = self.predict(h_adv)
+        return h_pix, h_adv, pred
 
     def get_1x_lr_params_NOscale(self):
         """

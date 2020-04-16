@@ -272,7 +272,7 @@ class Solver(object):
         # -----------------------------
 
         """ Classification and Adversarial Loss (Basemodel) """
-        feature, pred = self.basemodel(images)
+        pix_feature, adv_feature, pred = self.basemodel(images)
 
         """ Idt, Fake, Cycle, DCls, Semantic Loss (Generator) """
         label_onehot = torch.cat([
@@ -281,8 +281,8 @@ class Solver(object):
 
         self.domain_label = self.domain_label.to(self.gpu_map['netG'])
         label_onehot = label_onehot.to(self.gpu_map['netG'])
-        feature = feature.to(self.gpu_map['netG'])
-        trsfakeImg = self.netG(self.domain_label, label_onehot, feature)
+        pix_feature = pix_feature.to(self.gpu_map['netG'])
+        trsfakeImg = self.netG(self.domain_label, label_onehot, pix_feature)
 
         # -----------------------------
         # 3. Train Discriminators
@@ -293,7 +293,7 @@ class Solver(object):
             param.requires_grad = True
 
         # Train with original domain labels
-        DFeatlogit = self.netDFeat(feature.detach().to(self.gpu_map['netDFeat']))
+        DFeatlogit = self.netDFeat(adv_feature.detach().to(self.gpu_map['netDFeat']))
         Dloss_AdvFeat = self.FeatAdv_loss(DFeatlogit,
                                           self._real_domain_label(DFeatlogit, 'Feat'))
         Dloss_AdvFeat.backward()
@@ -328,7 +328,7 @@ class Solver(object):
         self.bloss_Clf = nn.CrossEntropyLoss()(pred[ :self.num_source*self.batch_size].to(self.gpu0),
                                                labels)
 
-        DFeatlogit = self.netDFeat(feature.to(self.gpu_map['netDFeat']))
+        DFeatlogit = self.netDFeat(adv_feature.to(self.gpu_map['netDFeat']))
         self.bloss_AdvFeat = self.FeatAdv_loss(DFeatlogit,
                                                self._fake_domain_label(DFeatlogit, 'Feat'))
 
@@ -406,10 +406,10 @@ class Solver(object):
                 image_fake_list = [F.interpolate(image_fixed, size=(self.D_size, self.D_size), mode='bilinear')]
                 domain_fixed = self._fixed_test_domain_label()
 
-                feature, _ = self.basemodel(image_fixed.to(self.gpu0))
+                pix_feature, adv_feature, _ = self.basemodel(image_fixed.to(self.gpu0))
                 image_fake = self.netG(domain_fixed.to(self.gpu_map['netG']),
                                        label_fixed_onehot.to(self.gpu_map['netG']),
-                                       feature.to(self.gpu_map['netG']))
+                                       pix_feature.to(self.gpu_map['netG']))
                 image_fake_list.append(image_fake)
 
                 image_concat = torch.cat(image_fake_list, dim=3)
@@ -443,7 +443,7 @@ class Solver(object):
                 target_images = target_images.to(self.gpu0)
                 target_labels = target_labels.to(self.gpu0)
 
-                _, target_pred = self.basemodel(target_images)
+                _, _, target_pred = self.basemodel(target_images)
 
                 if torch.isnan(target_pred).any(): raise ValueError
                 target_pred = target_pred.max(1)[1].data.cpu().numpy()

@@ -6,13 +6,13 @@ import numpy as np
 from model.generator_block import ResidualBlock, UpsamplingBlock, DecoderBlock
 
 
-class GeneratorRes(nn.Module):
+class Generator(nn.Module):
     """Generator network."""
     def __init__(self, num_filters=64, num_domain=3, num_classes=32, norm='CondIN', gpu=None, gpu2=None,
                  prev_feature_size=2048):
         # ResNet size: 64, 256, 512, 1024, 2048
         # VGG size: 64, 128, 256, 512, 512
-        super(GeneratorRes, self).__init__()
+        super(Generator, self).__init__()
         self.num_domain = num_domain
         self.num_classes = num_classes
         self.norm = norm

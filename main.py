@@ -14,8 +14,7 @@ from solver import Solver
 from model.deeplab_res import DeeplabRes
 from model.deeplab_vgg import DeeplabVGG
 from model.discriminator import IMGDiscriminator, ResDiscriminator, VGGDiscriminator, AlexDiscriminator
-from model.generator_res import GeneratorRes
-from model.generator_vgg import GeneratorVGG
+from model.generator import Generator
 from dataset.multiloader import MultiDomainLoader
 from utils.weight_init import weight_init
 
@@ -155,14 +154,9 @@ def main(config, args):
     netDImg.to(gpu_map['netDImg'])
     netDFeat.to(gpu_map['netDFeat'])
 
-    if config['train']['base'] == 'ResNet':
-        netG = GeneratorRes(num_filters=G_convdim, num_domain=num_domain,
-                        norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'], num_classes=num_classes+1,
-                        prev_feature_size=prev_feature_size)
-    elif config['train']['base'] == 'VGG':
-        netG = GeneratorVGG(num_filters=G_convdim, num_domain=num_domain,
-                        norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'], num_classes=num_classes+1,
-                        prev_feature_size=prev_feature_size)
+    netG = Generator(num_filters=G_convdim, num_domain=num_domain,
+                    norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'], num_classes=num_classes+1,
+                    prev_feature_size=prev_feature_size)
 
     netDImg.apply(weight_init)
     netDFeat.apply(weight_init)
