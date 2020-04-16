@@ -25,8 +25,8 @@ class IMGDiscriminator(nn.Module):
             curr_dim = next_dim
             next_dim *= 2
 
-        downsample.append(spectral_norm(nn.Conv2d(next_dim//2, 1024, kernel_size=3, stride=2, padding=0)))
-        downsample.append(nn.LeakyReLU(0.01))
+        #downsample.append(spectral_norm(nn.Conv2d(next_dim//2, 1024, kernel_size=3, stride=2, padding=0)))
+        #downsample.append(nn.LeakyReLU(0.01))
         self.downsample = nn.Sequential(*downsample)
 
         self.psi = spectral_norm(nn.Linear(1024, 1))
@@ -37,7 +37,8 @@ class IMGDiscriminator(nn.Module):
             aux_clf.append(nn.Sequential(*[
                 ResidualBlock(1024, 1024, num_domain, 'SN'),
                 ResidualBlock(1024, 1024, num_domain, 'SN'),
-                nn.Conv2d(1024, num_classes, kernel_size=3, stride=1, padding=0)]))
+                ResidualBlock(1024, 1024, num_domain, 'SN'),
+                nn.Conv2d(1024, num_classes, kernel_size=2, stride=1, padding=0)]))
 
         self.aux_clf = nn.ModuleList(aux_clf)
 

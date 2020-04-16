@@ -69,14 +69,8 @@ class VGGMulti(nn.Module):
         h = self.avgpool(h)
         h = torch.flatten(h, 1)
         h = self.compress(h)
-
-        if not self.partial:
-            feature = [conv1, conv2, conv3, conv4, conv5, h]
-        else:
-            feature = [conv4, conv5, h]
-
         pred = self.predict(h)
-        return feature, pred
+        return h, pred
 
     def get_1x_lr_params_NOscale(self):
         """

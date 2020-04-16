@@ -77,6 +77,7 @@ class Solver(object):
         self.G_lr = G_lr
         self.num_classes = config['data']['num_classes']
         self.task = self.config['data']['task']
+        self.D_size = self.config['data']['D_size']
 
         self.total_step = self.config['train']['num_steps']
         self.early_stop_step = self.config['train']['num_steps_stop']
@@ -272,23 +273,16 @@ class Solver(object):
 
         """ Classification and Adversarial Loss (Basemodel) """
         feature, pred = self.basemodel(images)
-        if not self.partial:
-            [concat1, concat2, concat3, concat4, concat5, feature] = feature
-        else:
-            [concat4, concat5, feature] = feature
 
         """ Idt, Fake, Cycle, DCls, Semantic Loss (Generator) """
         label_onehot = torch.cat([
             torch.eye(self.num_classes+1)[labels],
             torch.eye(self.num_classes+1)[-1].unsqueeze(0).repeat(self.batch_size, 1)], dim=0).to(self.gpu_map['netG'])
-        if not self.partial:
-            trsfakeImg = self._netG(self.domain_label, label_onehot, concat1, concat2, concat3, concat4, concat5)
-        else:
-            concat4 = concat4.to(self.gpu_map['netG'])
-            concat5 = concat5.to(self.gpu_map['netG'])
-            self.domain_label = self.domain_label.to(self.gpu_map['netG'])
-            label_onehot = label_onehot.to(self.gpu_map['netG'])
-            trsfakeImg = self.netG(self.domain_label, label_onehot, conv4=concat4, conv5=concat5)
+
+        self.domain_label = self.domain_label.to(self.gpu_map['netG'])
+        label_onehot = label_onehot.to(self.gpu_map['netG'])
+        feature = feature.to(self.gpu_map['netG'])
+        trsfakeImg = self.netG(self.domain_label, label_onehot, feature)
 
         # -----------------------------
         # 3. Train Discriminators
@@ -309,7 +303,8 @@ class Solver(object):
         fake_logit, _ = self.netDImg(trsfakeImg.detach().to(self.gpu_map['netDImg']),
                                      self.domain_label.to(self.gpu_map['netDImg']),
                                      adv_training=False)
-        real_logit, aux_logit = self.netDImg(images.to(self.gpu_map['netDImg']),
+        images_D = F.interpolate(images, size=(self.D_size, self.D_size), mode='bilinear').to(self.gpu_map['netDImg'])
+        real_logit, aux_logit = self.netDImg(images_D,
                                              self.domain_label.to(self.gpu_map['netDImg']),
                                              adv_training=False)
 
@@ -408,21 +403,13 @@ class Solver(object):
                     torch.eye(self.num_classes+1)[label_fixed],
                     torch.eye(self.num_classes+1)[-1].unsqueeze(0)])
 
-                image_fake_list = [image_fixed]
+                image_fake_list = [F.interpolate(image_fixed, size=(self.D_size, self.D_size), mode='bilinear')]
                 domain_fixed = self._fixed_test_domain_label()
 
                 feature, _ = self.basemodel(image_fixed.to(self.gpu0))
-                if not self.partial:
-                    concat1, concat2, concat3, concat4, concat5, _ = feature
-                    image_fake = self._netG(domain_fixed.to(self.gpu_map['netG']),
-                                            label_fixed_onehot.to(self.gpu_map['netG']),
-                                            concat1, concat2, concat3, concat4, concat5)
-                else:
-                    concat4, concat5, _ = feature
-                    image_fake = self.netG(domain_fixed.to(self.gpu_map['netG']),
-                                           label_fixed_onehot.to(self.gpu_map['netG']),
-                                           conv4=concat4.to(self.gpu_map['netG']),
-                                           conv5=concat5.to(self.gpu_map['netG']))
+                image_fake = self.netG(domain_fixed.to(self.gpu_map['netG']),
+                                       label_fixed_onehot.to(self.gpu_map['netG']),
+                                       feature.to(self.gpu_map['netG']))
                 image_fake_list.append(image_fake)
 
                 image_concat = torch.cat(image_fake_list, dim=3)

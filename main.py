@@ -135,10 +135,10 @@ def main(config, args):
 
     if config['train']['base'] == 'ResNet':
         basemodel = DeeplabRes(num_classes=num_classes, partial=partial)
-        prev_feature_size = [64, 256, 512, 1024, 2048]
+        prev_feature_size = 2048
     elif config['train']['base'] == 'VGG':
         basemodel = DeeplabVGG(num_classes=num_classes, partial=partial)
-        prev_feature_size = [64, 128, 256, 512, 512]
+        prev_feature_size = 4096
 
     basemodel.to(gpu_map['basemodel'])
 
@@ -158,11 +158,11 @@ def main(config, args):
     if config['train']['base'] == 'ResNet':
         netG = GeneratorRes(num_filters=G_convdim, num_domain=num_domain,
                         norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'], num_classes=num_classes+1,
-                        partial=partial, prev_feature_size=prev_feature_size)
+                        prev_feature_size=prev_feature_size)
     elif config['train']['base'] == 'VGG':
         netG = GeneratorVGG(num_filters=G_convdim, num_domain=num_domain,
                         norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'], num_classes=num_classes+1,
-                        partial=partial, prev_feature_size=prev_feature_size)
+                        prev_feature_size=prev_feature_size)
 
     netDImg.apply(weight_init)
     netDFeat.apply(weight_init)

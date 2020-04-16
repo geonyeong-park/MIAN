@@ -10,6 +10,7 @@ data:
   task: 'office_home'  # office, office_caltech_10, office_home
   input_size: 256
   crop_size: 224
+  D_size: 64
   num_classes: 65 # office:31, office_caltech_10: 10, office_home: 65
   source: ['Art', 'Clipart', 'Product']
   target: 'Realworld'
@@ -21,7 +22,7 @@ data:
 train:
   num_steps: 100000
   num_steps_stop: 100000
-  batch_size: 16
+  batch_size: 32
   partial: False
 
   base_model:
