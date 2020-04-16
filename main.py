@@ -13,11 +13,9 @@ from shutil import copyfile
 from solver import Solver
 from model.deeplab_res import DeeplabRes
 from model.deeplab_vgg import DeeplabVGG
-from model.deeplab_alex import DeeplabAlex
 from model.discriminator import IMGDiscriminator, ResDiscriminator, VGGDiscriminator, AlexDiscriminator
 from model.generator_res import GeneratorRes
 from model.generator_vgg import GeneratorVGG
-from model.generator_alex import GeneratorAlex
 from dataset.multiloader import MultiDomainLoader
 from utils.weight_init import weight_init
 
@@ -98,7 +96,7 @@ def main(config, args):
     gpu_map = {
         'basemodel': 'cuda:0',
         'netDImg': 'cuda:0',
-        'netDFeat': 'cuda:1',
+        'netDFeat': 'cuda:0',
         'netG': 'cuda:1',
         'netG_2': 'cuda:1',
         'all_order': gpu
@@ -117,6 +115,7 @@ def main(config, args):
     assert base == 'VGG' or base == 'ResNet' or base == 'Alex'
     base_lr = config['train']['base_model']['lr']
     base_momentum = config['train']['base_model']['momentum']
+    partial = config['train']['partial']
     D_lr = config['train']['netD']['lr']
     D_momentum = config['train']['netD']['momentum']
     G_lr = config['train']['netG']['lr']
@@ -129,52 +128,46 @@ def main(config, args):
 
     G_convdim = config['model']['netG']['conv_dim'][base]
     G_norm = config['model']['netG']['norm']
-    G_repeat_num = config['model']['netG']['repeat_num']
 
     # ------------------------
     # 1. Create Model
     # ------------------------
 
     if config['train']['base'] == 'ResNet':
-        basemodel = DeeplabRes(num_classes=num_classes)
+        basemodel = DeeplabRes(num_classes=num_classes, partial=partial)
+        prev_feature_size = [64, 256, 512, 1024, 2048]
     elif config['train']['base'] == 'VGG':
-        basemodel = DeeplabVGG(num_classes=num_classes)
-    elif config['train']['base'] == 'Alex':
-        basemodel = DeeplabAlex(num_classes=num_classes)
+        basemodel = DeeplabVGG(num_classes=num_classes, partial=partial)
+        prev_feature_size = [64, 128, 256, 512, 512]
 
     basemodel.to(gpu_map['basemodel'])
 
     netDImg = IMGDiscriminator(image_size=cropped_size, conv_dim=D_convdim_img, repeat_num=D_repeat_img,
                                channel=3, num_domain=num_domain, num_classes=num_classes)
 
-
     if config['train']['base'] == 'ResNet':
         # ResNet uses 2048x7x7 features. Clf: AvgPool, DFeat: Compress
-        netDFeat = ResDiscriminator(conv_dim=1024, repeat_num=2,
-                                    channel=2048, num_domain=num_domain)
+        netDFeat = ResDiscriminator(channel=2048, num_domain=num_domain)
     elif config['train']['base'] == 'VGG':
         # VGG uses Compressed 512x7x7--> 4096 features.
         netDFeat = VGGDiscriminator(channel=4096, num_domain=num_domain)
-    elif config['train']['base'] == 'Alex':
-        # Alexnet uses Compressed 256x6x6--> 4096 features.
-        netDFeat = AlexDiscriminator(channel=4096, num_domain=num_domain)
 
     netDImg.to(gpu_map['netDImg'])
     netDFeat.to(gpu_map['netDFeat'])
 
     if config['train']['base'] == 'ResNet':
-        netG = GeneratorRes(num_filters=G_convdim, num_domain=num_domain, repeat_num=G_repeat_num,
-                            norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'], num_classes=num_classes+1)
+        netG = GeneratorRes(num_filters=G_convdim, num_domain=num_domain,
+                        norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'], num_classes=num_classes+1,
+                        partial=partial, prev_feature_size=prev_feature_size)
     elif config['train']['base'] == 'VGG':
         netG = GeneratorVGG(num_filters=G_convdim, num_domain=num_domain,
-                            norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'], num_classes=num_classes+1)
-    elif config['train']['base'] == 'Alex':
-        netG = GeneratorAlex(num_filters=G_convdim, num_domain=num_domain,
-                            norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'], num_classes=num_classes+1)
+                        norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'], num_classes=num_classes+1,
+                        partial=partial, prev_feature_size=prev_feature_size)
 
     netDImg.apply(weight_init)
     netDFeat.apply(weight_init)
     netG.apply(weight_init)
+
     # ------------------------
     # 2. Create DataLoader
     # ------------------------
@@ -187,8 +180,12 @@ def main(config, args):
     # 3. Create Optimizer and Solver
     # ------------------------
 
-    optBase = optim.SGD(basemodel.optim_parameters(base_lr),
-                        momentum=base_momentum, weight_decay=weight_decay)
+    if task != 'office_home':
+        optBase = optim.SGD(basemodel.optim_parameters(base_lr),
+                            momentum=base_momentum, weight_decay=weight_decay)
+    else:
+        optBase = optim.Adam(basemodel.optim_parameters(1e-4),
+                             betas=(0.9, 0.999), weight_decay=weight_decay)
 
     DImg_lr = D_lr
 

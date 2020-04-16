@@ -55,3 +55,17 @@ class AmazonDataSet(data.Dataset):
         label = torch.from_numpy(np.array(label, np.int32, copy=False))
         return image, label
 
+
+class CaltechDataSet(AmazonDataSet):
+    def __init__(self, root, list_path=None, base_transform=None, resize=300, cropsize=256, split='train'):
+        super(CaltechDataSet, self).__init__(root, list_path, base_transform, resize, cropsize, split)
+
+
+class DSLRDataSet(AmazonDataSet):
+    def __init__(self, root, list_path=None, base_transform=None, resize=300, cropsize=256, split='train'):
+        super(DSLRDataSet, self).__init__(root, list_path, base_transform, resize, cropsize, split)
+
+
+class WebcamDataSet(AmazonDataSet):
+    def __init__(self, root, list_path=None, base_transform=None, resize=300, cropsize=256, split='train'):
+        super(WebcamDataSet, self).__init__(root, list_path, base_transform, resize, cropsize, split)

@@ -69,13 +69,13 @@ class ConditionalBatchOrInstanceNorm2d(nn.Module):
 
 class ResidualBlock(nn.Module):
     """Residual Block with conditional batch normalization."""
-    def __init__(self, dim_in, dim_out, num_domain=3, norm='CondBN'):
+    def __init__(self, dim_in, dim_out, num_domain=3, norm='CondBN', kernel_size=3, stride=1, padding=1):
         super(ResidualBlock, self).__init__()
         self.norm = norm
 
-        self.conv1 = nn.Conv2d(dim_in, dim_out, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(dim_in, dim_out, kernel_size=kernel_size, stride=stride, padding=padding, bias=False)
         self.a1 = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(dim_out, dim_out, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(dim_out, dim_out, kernel_size=kernel_size, stride=stride, padding=padding, bias=False)
 
         if norm == 'CondBN' or norm == 'CondIN' or norm == 'BN' or norm == 'IN':
             self.norm1 = ConditionalBatchOrInstanceNorm2d(dim_out, num_domain, norm)

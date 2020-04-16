@@ -7,12 +7,12 @@ exp_setting:
 
 
 data:
-  task: 'office_caltech_10'  # office, office_caltech_10
+  task: 'office_home'  # office, office_caltech_10, office_home
   input_size: 256
   crop_size: 224
-  num_classes: 31
-  source: ['Webcam', 'DSLR', 'Caltech']
-  target: 'Amazon'
+  num_classes: 65 # office:31, office_caltech_10: 10, office_home: 65
+  source: ['Art', 'Realworld', 'Product']
+  target: 'Clipart'
   num_domain: 4
   num_workers: 1
   ignore_label: 255
@@ -20,8 +20,9 @@ data:
 
 train:
   num_steps: 100000
-  num_steps_stop: 10000
+  num_steps_stop: 100000
   batch_size: 16
+  partial: True
 
   base_model:
     lr: 0.0001
@@ -51,16 +52,12 @@ train:
         init: 1.
         final: 1.
         step: 1
-      Gloss_cyc:
+      Gloss_auxsem:
         init: 1.
         final: 1.
         step: 1
     base_only:
       bloss_fake:
-        init: 0.01
-        final: 0.01
-        step: 1
-      bloss_AdvDcls:
         init: 0.01
         final: 0.01
         step: 1
@@ -73,10 +70,6 @@ train:
         init: 1.
         final: 1.
         step: 1
-      Dloss_dcls:
-        init: 10.
-        final: 10.
-        step: 1
       Dloss_auxsem:
         init: 10.
         final: 10.
@@ -88,19 +81,18 @@ train:
     pixAdv: 'LS'
     GP: 30
     n_critic: 5
-  base: 'VGG'  # Alex, VGG, ResNet
+  base: 'ResNet'  # Alex, VGG, ResNet
 
 model:
   netD:
     conv_dim: 
-      img: 32
+      img: 64
     repeat_num:   # For downsampling (Remind PatchGAN)
       img: 5
   netG:
     conv_dim: 
-      ResNet: 512
+      ResNet: 128
       VGG: 64
       Alex: 64
     norm: 'BN'  # CondBN, CondIN, BN, IN
-    repeat_num: 3 # For ResBlock
 

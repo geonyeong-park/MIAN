@@ -3,13 +3,16 @@ import torch.nn as nn
 from torch.nn.utils import spectral_norm
 import torch.nn.functional as F
 import numpy as np
-from model.generator_res import ResidualBlock
+from model.generator_block import ResidualBlock
 
 
 class IMGDiscriminator(nn.Module):
     def __init__(self, image_size=512, conv_dim=128, channel=3, repeat_num=5, num_domain=3, num_classes=19):
         super(IMGDiscriminator, self).__init__()
         self.relu = nn.ReLU(inplace=True)
+        self.num_classes = num_classes
+        self.num_domain = num_domain
+        self.register_buffer('pseudo_label', torch.LongTensor(np.array([i for i in range(num_domain)])))
 
         assert channel == 3
         curr_dim = channel
@@ -19,67 +22,46 @@ class IMGDiscriminator(nn.Module):
         for i in range(repeat_num):
             downsample.append(spectral_norm(nn.Conv2d(curr_dim, next_dim, kernel_size=4, stride=2, padding=1)))
             downsample.append(nn.LeakyReLU(0.01))
-            buffer_dim = next_dim
             curr_dim = next_dim
-            next_dim = next_dim * 2 if not next_dim > 2000 else curr_dim
+            next_dim *= 2
 
-        downsample.append(spectral_norm(nn.Conv2d(curr_dim, 1024, kernel_size=3, stride=2, padding=0)))
+        downsample.append(spectral_norm(nn.Conv2d(next_dim//2, 1024, kernel_size=3, stride=2, padding=0)))
         downsample.append(nn.LeakyReLU(0.01))
         self.downsample = nn.Sequential(*downsample)
-        self.dropout = nn.Dropout(0.5)
 
-        self.conv_real_fake = nn.Conv2d(1024, 1, kernel_size=3, stride=1, padding=1, bias=False)
-        self.conv_domain_cls = nn.Conv2d(1024, num_domain, kernel_size=3, padding=0, bias=False)
+        self.psi = spectral_norm(nn.Linear(1024, 1))
+        self.V = spectral_norm(nn.Embedding(num_domain, 1024))
 
         aux_clf = []
         for i in range(num_domain-1):
             aux_clf.append(nn.Sequential(*[
-                ResidualBlock(1024, 1024, num_domain=num_domain, norm='SN'),
-                ResidualBlock(1024, 1024, num_domain=num_domain, norm='SN'),
-                nn.Conv2d(1024, num_classes, kernel_size=3, padding=0, bias=False)]))
+                ResidualBlock(1024, 1024, num_domain, 'SN'),
+                ResidualBlock(1024, 1024, num_domain, 'SN'),
+                nn.Conv2d(1024, num_classes, kernel_size=3, stride=1, padding=0)]))
+
         self.aux_clf = nn.ModuleList(aux_clf)
 
-    def forward(self, x):
+    def forward(self, x, y, adv_training=False):
+        pseudo_label = self.pseudo_label.repeat(y.size(0), 1)
         h = self.downsample(x)
-        # h = self.dropout(h)
 
-        out_src = self.conv_real_fake(h)
-        out_domain = self.conv_domain_cls(h)
+        h_global_sum = torch.sum(h, dim=(2,3))
+        out_d_x = self.psi(h_global_sum)
+
+        if not adv_training:
+            out_d_x += torch.sum(self.V(y) * h_global_sum, dim=1, keepdim=True)
+        else:
+            out_d_x += torch.sum((self.V(pseudo_label).sum(1) - self.V(y)) * h_global_sum, dim=1, keepdim=True) / (self.num_domain-1)
+
         out_aux = torch.cat([clf(h).unsqueeze_(0) for clf in self.aux_clf], dim=0)
 
-        return out_src, out_domain.view(out_domain.size(0), out_domain.size(1)), out_aux.view(out_aux.size(0), out_aux.size(1), out_aux.size(2))
+        return out_d_x, out_aux.view(out_aux.size(0), out_aux.size(1), out_aux.size(2))
 
 
 class ResDiscriminator(nn.Module):
-    def __init__(self, conv_dim=1024, channel=2048, repeat_num=3, num_domain=3):
+    def __init__(self, channel=4096, num_domain=3):
         super(ResDiscriminator, self).__init__()
 
-        downsample = []
-        next_dim = conv_dim
-        curr_dim = channel
-
-        for i in range(repeat_num):
-            downsample.append(nn.Conv2d(curr_dim, next_dim, kernel_size=3, stride=2, padding=0))
-            downsample.append(nn.LeakyReLU(0.01))
-            curr_dim = next_dim
-            next_dim = next_dim // 2 if not next_dim < 60 else next_dim
-
-        self.dropout = nn.Dropout(0.5)
-        self.downsample = nn.Sequential(*downsample)
-        self.conv_domain_cls_patch = nn.Linear(curr_dim, num_domain)
-
-    def forward(self, x):
-        h = self.downsample(x)
-        h = h.view(h.size()[0], h.size()[1])
-        #h = self.dropout(h)
-        out_src = self.conv_domain_cls_patch(h)
-        return out_src
-
-
-class VGGDiscriminator(nn.Module):
-    def __init__(self, channel=4096, num_domain=3):
-        super(VGGDiscriminator, self).__init__()
-
         self.conv_domain_cls_patch = nn.Sequential(*[
             nn.Linear(channel, channel//4),
             nn.ReLU(inplace=True),
@@ -89,15 +71,10 @@ class VGGDiscriminator(nn.Module):
         out_src = self.conv_domain_cls_patch(x)
         return out_src
 
-class AlexDiscriminator(nn.Module):
+class VGGDiscriminator(ResDiscriminator):
     def __init__(self, channel=4096, num_domain=3):
-        super(AlexDiscriminator, self).__init__()
+        super(VGGDiscriminator, self).__init__(channel, num_domain)
 
-        self.conv_domain_cls_patch = nn.Sequential(*[
-            nn.Linear(channel, channel//4),
-            nn.ReLU(inplace=True),
-            nn.Linear(channel//4, num_domain)])
-
-    def forward(self, x):
-        out_src = self.conv_domain_cls_patch(x)
-        return out_src
+class AlexDiscriminator(ResDiscriminator):
+    def __init__(self, channel=4096, num_domain=3):
+        super(AlexDiscriminator, self).__init__(channel, num_domain)

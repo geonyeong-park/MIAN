@@ -9,11 +9,12 @@ from utils.mmd import mmd_rbf_noaccelerate
 
 
 class VGGMulti(nn.Module):
-    def __init__(self, num_classes=19, vgg16_path=None):
+    def __init__(self, num_classes=19, partial=False):
         super(VGGMulti, self).__init__()
 
         self.num_classes = num_classes
         self.pool = nn.MaxPool2d(2, 2)
+        self.partial = partial
         encoder = torchvision.models.vgg16(pretrained=True).features
         classifier = torchvision.models.vgg16(pretrained=True).classifier
 
@@ -68,7 +69,11 @@ class VGGMulti(nn.Module):
         h = self.avgpool(h)
         h = torch.flatten(h, 1)
         h = self.compress(h)
-        feature = [conv1, conv2, conv3, conv4, conv5, h]
+
+        if not self.partial:
+            feature = [conv1, conv2, conv3, conv4, conv5, h]
+        else:
+            feature = [conv4, conv5, h]
 
         pred = self.predict(h)
         return feature, pred
@@ -113,7 +118,7 @@ class VGGMulti(nn.Module):
                 {'params': self.get_10x_lr_params(), 'lr': lr*10}]
 
 
-def DeeplabVGG(num_classes=21, vgg16_path=None):
-    model = VGGMulti(num_classes, vgg16_path)
+def DeeplabVGG(num_classes=21, partial=False):
+    model = VGGMulti(num_classes, partial)
     return model
 

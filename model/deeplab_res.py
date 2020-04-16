@@ -5,44 +5,39 @@ import torch
 import torchvision
 from torchvision import models
 from torchvision.models.resnet import ResNet, Bottleneck, model_urls, load_state_dict_from_url
-from model.parallel_resnet import ParallelResNet101, PipelineParallelResNet101
 import numpy as np
 
-affine_par = True
-
-class Classifier_Module(nn.Module):
-    def __init__(self, inplanes, dilation_series, padding_series, num_classes):
-        super(Classifier_Module, self).__init__()
-        self.conv2d_list = nn.ModuleList()
-        for dilation, padding in zip(dilation_series, padding_series):
-            self.conv2d_list.append(
-                nn.Conv2d(inplanes, num_classes, kernel_size=3, stride=1, padding=padding, dilation=dilation, bias=True))
-
-        for m in self.conv2d_list:
-            m.weight.data.normal_(0, 0.01)
-
-    def forward(self, x):
-        out = self.conv2d_list[0](x)
-        for i in range(len(self.conv2d_list) - 1):
-            out += self.conv2d_list[i + 1](x)
-            return out
-
-def deactivate_batchnorm(m):
-    if isinstance(m, nn.BatchNorm2d):
-        m.requires_grad = False
-        m.eval()
 
 class ResNetMulti(nn.Module):
-    def __init__(self, num_classes):
+    def __init__(self, num_classes, partial):
         super(ResNetMulti, self).__init__()
+        self.partial = partial
 
-        self.resnet = nn.Sequential(*list(models.resnet50(pretrained=True).children())[:-2])
-        #self.resnet.apply(deactivate_batchnorm)
-        self.clf = nn.Linear(2048, num_classes)
+        resnet = models.resnet50(pretrained=True)
+        self.conv1 = nn.Sequential(*list(resnet.children())[:3]) # 64,112,112
+        self.conv2 = nn.Sequential(*list(resnet.children())[3:5]) # 256,56,56
+        self.conv3 = nn.Sequential(*list(resnet.children())[5]) # 512,28,28
+        self.conv4 = nn.Sequential(*list(resnet.children())[6]) # 1024,14,14
+        self.conv5 = nn.Sequential(*list(resnet.children())[7]) # 2048,7,7
+
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.predict = nn.Linear(2048, num_classes)
 
     def forward(self, x):
-        feature = self.resnet(x)
-        pred = self.clf(torch.mean(feature, dim=(2,3)))
+        conv1 = self.conv1(x)
+        conv2 = self.conv2(conv1)
+        conv3 = self.conv3(conv2)
+        conv4 = self.conv4(conv3)
+        conv5 = self.conv5(conv4)
+        h = self.avgpool(conv5)
+        h = torch.flatten(h, 1)
+
+        if not self.partial:
+            feature = [conv1, conv2, conv3, conv4, conv5, h]
+        else:
+            feature = [conv4, conv5, h]
+
+        pred = self.predict(h)
         return feature, pred
 
     def get_1x_lr_params_NOscale(self):
@@ -53,7 +48,11 @@ class ResNetMulti(nn.Module):
         any batchnorm parameter
         """
         b = []
-        b.append(self.resnet)
+        b.append(self.conv1)
+        b.append(self.conv2)
+        b.append(self.conv3)
+        b.append(self.conv4)
+        b.append(self.conv5)
 
         for i in range(len(b)):
             for j in b[i].modules():
@@ -69,7 +68,7 @@ class ResNetMulti(nn.Module):
         which does the classification of pixel into classes
         """
         b = []
-        b.append(self.clf.parameters())
+        b.append(self.predict.parameters())
 
         for j in range(len(b)):
             for i in b[j]:
@@ -77,10 +76,10 @@ class ResNetMulti(nn.Module):
 
     def optim_parameters(self, lr):
         return [{'params': self.get_1x_lr_params_NOscale(), 'lr': lr},
-                {'params': self.get_10x_lr_params(), 'lr': 10*lr}]
+                {'params': self.get_10x_lr_params(), 'lr': lr}]
 
 
-def DeeplabRes(num_classes=21):
-    model = ResNetMulti(num_classes)
+def DeeplabRes(num_classes=21, partial=False):
+    model = ResNetMulti(num_classes, partial)
     return model
 

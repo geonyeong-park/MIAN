@@ -76,10 +76,12 @@ class Solver(object):
         self.DFeat_lr = DFeat_lr
         self.G_lr = G_lr
         self.num_classes = config['data']['num_classes']
+        self.task = self.config['data']['task']
 
         self.total_step = self.config['train']['num_steps']
         self.early_stop_step = self.config['train']['num_steps_stop']
         self.power = self.config['train']['lr_decay_power']
+        self.partial = self.config['train']['partial'] # Whether G uses full skip-connection
 
         self.log_loss = {}
         self.log_lr = {}
@@ -131,10 +133,10 @@ class Solver(object):
                 print('Training Finished')
 
     def _adjust_lr_opts(self, i_iter):
-        self.log_lr['base'] = adjust_learning_rate(self.optBase, self.base_lr, i_iter, self.total_step, self.power)
-        self.log_lr['DImg'] = adjust_learning_rate(self.optDImg, self.DImg_lr, i_iter, self.total_step, self.power)
-        self.log_lr['DFeat'] = adjust_learning_rate(self.optDFeat, self.DFeat_lr, i_iter, self.total_step, self.power)
-        self.log_lr['G'] = adjust_learning_rate(self.optG, self.G_lr, i_iter, self.total_step, self.power)
+        self.log_lr['base'] = adjust_learning_rate(self.optBase, self.base_lr, i_iter, self.total_step, self.power, self.task)
+        self.log_lr['DImg'] = adjust_learning_rate(self.optDImg, self.DImg_lr, i_iter, self.total_step, self.power, self.task)
+        self.log_lr['DFeat'] = adjust_learning_rate(self.optDFeat, self.DFeat_lr, i_iter, self.total_step, self.power, self.task)
+        self.log_lr['G'] = adjust_learning_rate(self.optG, self.G_lr, i_iter, self.total_step, self.power, self.task)
 
     def _broadcast_param_opt(self):
         hvd.broadcast_parameters(self.basemodel.state_dict(), root_rank=0)
@@ -152,12 +154,8 @@ class Solver(object):
         std=torch.FloatTensor([0.229, 0.224, 0.225]).view(1, -1, 1, 1).repeat(N, 1, H, W)
         return mean+data*std
 
-    def _fixed_test_domain_label(self, num_sample):
-        fixed_label = []
-        for i in range(self.num_domain):
-            fixed_label.append([i]*num_sample)
-
-        fixed_label = torch.LongTensor(np.array(fixed_label))
+    def _fixed_test_domain_label(self):
+        fixed_label = torch.LongTensor(np.array([i for i in range(self.num_domain)]))
         return fixed_label
 
     def _fake_domain_label(self, tensor, model):
@@ -193,6 +191,13 @@ class Solver(object):
         dydx_l2norm = torch.sqrt(torch.sum(dydx**2, dim=1))
         return ld * torch.mean((dydx_l2norm-1)**2)
 
+    def _D_hingeLoss(self, fake, real):
+        loss = torch.mean(torch.relu(1. - real)) + torch.mean(torch.relu(1. + fake))
+        return loss
+
+    def _G_hingeLoss(self, fake):
+        return - torch.mean(fake)
+
     def _save_prediction(self, path, pred, lb):
         pd_col = colorize_mask(pred)
         lb_col = colorize_mask(lb)
@@ -213,15 +218,15 @@ class Solver(object):
 
         return nn.CrossEntropyLoss()(aux_logit_for_each_target_D, label)
 
-    def _netVGGAlex(self, concat1, concat2, concat3, concat4, feature, domain_label, class_label):
+    def _netG(self, domain_label, class_label, concat1, concat2, concat3, concat4, concat5):
         concat1 = concat1.to(self.gpu_map['netG_2'])
         concat2 = concat2.to(self.gpu_map['netG_2'])
         concat3 = concat3.to(self.gpu_map['netG'])
         concat4 = concat4.to(self.gpu_map['netG'])
-        feature = feature.to(self.gpu_map['netG'])
+        concat5 = concat5.to(self.gpu_map['netG'])
         domain_label = domain_label.to(self.gpu_map['netG'])
         class_label = class_label.to(self.gpu_map['netG'])
-        return self.netG(concat1, concat2, concat3, concat4, feature, domain_label, class_label)
+        return self.netG(domain_label, class_label, concat1, concat2, concat3, concat4, concat5)
 
     def _backprop_weighted_losses(self, lambdas, auxloss_under_ths, retain_graph=False):
         if not auxloss_under_ths:
@@ -267,17 +272,23 @@ class Solver(object):
 
         """ Classification and Adversarial Loss (Basemodel) """
         feature, pred = self.basemodel(images)
-        if self.base == 'VGG' or self.base == 'Alex':
+        if not self.partial:
             [concat1, concat2, concat3, concat4, concat5, feature] = feature
+        else:
+            [concat4, concat5, feature] = feature
 
         """ Idt, Fake, Cycle, DCls, Semantic Loss (Generator) """
         label_onehot = torch.cat([
             torch.eye(self.num_classes+1)[labels],
             torch.eye(self.num_classes+1)[-1].unsqueeze(0).repeat(self.batch_size, 1)], dim=0).to(self.gpu_map['netG'])
-        if self.base == 'ResNet':
-            trsfakeImg = self.netG(feature.to(self.gpu_map['netG']), self.domain_label, label_onehot)
-        elif self.base == 'VGG' or self.base == 'Alex':
-            trsfakeImg = self._netVGGAlex(concat1, concat2, concat3, concat4, concat5, self.domain_label, label_onehot)
+        if not self.partial:
+            trsfakeImg = self._netG(self.domain_label, label_onehot, concat1, concat2, concat3, concat4, concat5)
+        else:
+            concat4 = concat4.to(self.gpu_map['netG'])
+            concat5 = concat5.to(self.gpu_map['netG'])
+            self.domain_label = self.domain_label.to(self.gpu_map['netG'])
+            label_onehot = label_onehot.to(self.gpu_map['netG'])
+            trsfakeImg = self.netG(self.domain_label, label_onehot, conv4=concat4, conv5=concat5)
 
         # -----------------------------
         # 3. Train Discriminators
@@ -295,20 +306,15 @@ class Solver(object):
         self.log_loss['Dloss_AdvFeat'] = Dloss_AdvFeat.item()
         self.optDFeat.step()
 
-        fake_logit, _, _ = self.netDImg(trsfakeImg.detach().to(self.gpu_map['netDImg']))
-        self.Dloss_fake = torch.mean(fake_logit)
-        real_logit, dcls_logit, aux_logit = self.netDImg(images.to(self.gpu_map['netDImg']))
-        self.Dloss_real = - torch.mean(real_logit)
+        fake_logit, _ = self.netDImg(trsfakeImg.detach().to(self.gpu_map['netDImg']),
+                                     self.domain_label.to(self.gpu_map['netDImg']),
+                                     adv_training=False)
+        real_logit, aux_logit = self.netDImg(images.to(self.gpu_map['netDImg']),
+                                             self.domain_label.to(self.gpu_map['netDImg']),
+                                             adv_training=False)
 
-
-        d_onehot = torch.eye(self.num_domain)[self.domain_label].to(self.gpu_map['netDImg'])
-        self.Dloss_dcls = self.PixAdv_loss(dcls_logit, d_onehot)
         self.Dloss_auxsem = self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
-
-        self.Dloss_gp = self._gradient_penalty(real=images.to(self.gpu_map['netDImg']),
-                                               fake=trsfakeImg.detach().to(self.gpu_map['netDImg']),
-                                               ld=self.config['train']['GAN']['GP'])
-        self.Dloss_fakereal = self.Dloss_fake + self.Dloss_real + self.Dloss_gp
+        self.Dloss_fakereal = self._D_hingeLoss(fake_logit, real_logit)
         # At this moment we don't care about semantic loss of target data
 
         self._backprop_weighted_losses(self.loss_lambda['netD'],
@@ -345,9 +351,12 @@ class Solver(object):
             # 5-1. G
             self.optG.zero_grad()
 
-            fake_logit, dcls_logit, aux_logit = self.netDImg(trsfakeImg.to(self.gpu_map['netDImg']))
-            self.Gloss_fake = - torch.mean(fake_logit)
-            self.Gloss_cyc = torch.mean(torch.abs(images - trsfakeImg.to(self.gpu0)))
+            fake_logit, aux_logit = self.netDImg(trsfakeImg.to(self.gpu_map['netDImg']),
+                                                 self.domain_label.to(self.gpu_map['netDImg']),
+                                                 adv_training=False)
+            self.Gloss_fake = self._G_hingeLoss(fake_logit)
+            #self.Gloss_cyc = torch.mean(torch.abs(images - trsfakeImg.to(self.gpu0)))
+            self.Gloss_auxsem = self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
 
             self._backprop_weighted_losses(self.loss_lambda['netG'],
                                            auxloss_under_ths=True,
@@ -357,8 +366,10 @@ class Solver(object):
             # 5-2. Domain Adversarial loss for Base only
             self.optBase.zero_grad()
 
-            self.bloss_fake = self.Gloss_fake
-            self.bloss_AdvDcls = self.PixAdv_loss(dcls_logit, 1 - d_onehot)
+            AdvDcls_fake_logit, _ = self.netDImg(trsfakeImg.to(self.gpu_map['netDImg']),
+                                                 self.domain_label.to(self.gpu_map['netDImg']),
+                                                 adv_training=True)
+            self.bloss_fake = self._G_hingeLoss(AdvDcls_fake_logit)
             self.bloss_auxsem = self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
             self._backprop_weighted_losses(self.loss_lambda['base_only'],
                                            auxloss_under_ths=True,
@@ -398,18 +409,22 @@ class Solver(object):
                     torch.eye(self.num_classes+1)[-1].unsqueeze(0)])
 
                 image_fake_list = [image_fixed]
-                for d_fixed in self._fixed_test_domain_label(num_sample=self.num_domain):
-                    feature, _ = self.basemodel(image_fixed.to(self.gpu0))
-                    if self.base == 'VGG' or self.base == 'Alex':
-                        concat1, concat2, concat3, concat4, concat5, _ = feature
-                        image_fake = self._netVGGAlex(concat1, concat2, concat3, concat4, concat5,
-                                                      d_fixed.to(self.gpu_map['netG']),
-                                                      label_fixed_onehot.to(self.gpu_map['netG']))
-                    else:
-                        image_fake = self.netG(feature.to(self.gpu_map['netG']),
-                                               d_fixed.to(self.gpu_map['netG']),
-                                               label_fixed_onehot.to(self.gpu_map['netG']))
-                    image_fake_list.append(image_fake)
+                domain_fixed = self._fixed_test_domain_label()
+
+                feature, _ = self.basemodel(image_fixed.to(self.gpu0))
+                if not self.partial:
+                    concat1, concat2, concat3, concat4, concat5, _ = feature
+                    image_fake = self._netG(domain_fixed.to(self.gpu_map['netG']),
+                                            label_fixed_onehot.to(self.gpu_map['netG']),
+                                            concat1, concat2, concat3, concat4, concat5)
+                else:
+                    concat4, concat5, _ = feature
+                    image_fake = self.netG(domain_fixed.to(self.gpu_map['netG']),
+                                           label_fixed_onehot.to(self.gpu_map['netG']),
+                                           conv4=concat4.to(self.gpu_map['netG']),
+                                           conv5=concat5.to(self.gpu_map['netG']))
+                image_fake_list.append(image_fake)
+
                 image_concat = torch.cat(image_fake_list, dim=3)
                 sample_path = os.path.join(self.log_dir, '{}-FixTrsimages.jpg'.format(i_iter+1))
                 save_image(self._denorm(image_concat.data.cpu()), sample_path, nrow=self.num_domain, padding=0)

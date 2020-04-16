@@ -40,11 +40,11 @@ class MultiDomainLoader(object):
 
         datadir = os.path.join(rootdir, 'data')
         txtdir = os.path.join(rootdir, 'dataset')
+        module = importlib.import_module('dataset.{}_dataset'.format(task))
 
         self.source_dataset = []
 
         for source in self.dataset[:-1]:
-            module = importlib.import_module('dataset.{}_dataset'.format(source))
             datadir_ = os.path.join(datadir, source) if task == 'segmentation' else '{}/{}/{}'.format(datadir, task, source.lower())
             txtdir_ = os.path.join(txtdir, '{}_list'.format(source)) if task == 'segmentation' else None
 
@@ -55,7 +55,6 @@ class MultiDomainLoader(object):
             self.source_dataset.append(source_)
 
         target = self.dataset[-1]
-        module = importlib.import_module('dataset.{}_dataset'.format(target))
         datadir_ = os.path.join(datadir, target) if task == 'segmentation' else '{}/{}/{}'.format(datadir, task, target.lower())
         txtdir_ = os.path.join(txtdir, '{}_list'.format(target))
         target_ = getattr(module, '{}DataSet'.format(target))(datadir_, txtdir_,
