@@ -11,8 +11,8 @@ data:
   input_size: 256
   crop_size: 224
   num_classes: 65 # office:31, office_caltech_10: 10, office_home: 65
-  source: ['Art', 'Realworld', 'Product']
-  target: 'Clipart'
+  source: ['Art', 'Clipart', 'Product']
+  target: 'Realworld'
   num_domain: 4
   num_workers: 1
   ignore_label: 255
@@ -22,7 +22,7 @@ train:
   num_steps: 100000
   num_steps_stop: 100000
   batch_size: 16
-  partial: True
+  partial: False
 
   base_model:
     lr: 0.0001
@@ -75,7 +75,7 @@ train:
         final: 10.
         step: 1
 
-  GAN: 
+  GAN:
     main: 'WGAN_GP'
     featAdv: 'LS'
     pixAdv: 'LS'

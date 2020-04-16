@@ -180,12 +180,8 @@ def main(config, args):
     # 3. Create Optimizer and Solver
     # ------------------------
 
-    if task != 'office_home':
-        optBase = optim.SGD(basemodel.optim_parameters(base_lr),
-                            momentum=base_momentum, weight_decay=weight_decay)
-    else:
-        optBase = optim.Adam(basemodel.optim_parameters(1e-4),
-                             betas=(0.9, 0.999), weight_decay=weight_decay)
+    optBase = optim.SGD(basemodel.optim_parameters(base_lr),
+                        momentum=base_momentum, weight_decay=weight_decay)
 
     DImg_lr = D_lr
 
