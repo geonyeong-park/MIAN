@@ -7,13 +7,13 @@ exp_setting:
 
 
 data:
-  task: 'office_home'  # office, office_caltech_10, office_home
+  task: 'office_caltech_10'  # office, office_caltech_10, office_home
   input_size: 256
   crop_size: 224
   D_size: 64
-  num_classes: 65 # office:31, office_caltech_10: 10, office_home: 65
-  source: ['Art', 'Clipart', 'Product']
-  target: 'Realworld'
+  num_classes: 10 # office:31, office_caltech_10: 10, office_home: 65
+  source: ['Caltech', 'Webcam', 'DSLR']
+  target: 'Amazon'
   num_domain: 4
   num_workers: 1
   ignore_label: 255
@@ -82,7 +82,7 @@ train:
     pixAdv: 'LS'
     GP: 30
     n_critic: 5
-  base: 'ResNet'  # Alex, VGG, ResNet
+  base: 'VGG'  # Alex, VGG, ResNet
 
 model:
   netD:

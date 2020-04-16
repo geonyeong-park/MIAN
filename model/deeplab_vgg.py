@@ -88,7 +88,8 @@ class VGGMulti(nn.Module):
         b.append(self.conv3)
         b.append(self.conv4)
         b.append(self.conv5)
-        b.append(self.compress)
+        b.append(self.compress1)
+        b.append(self.compress2)
 
         for i in range(len(b)):
             for j in b[i].modules():
