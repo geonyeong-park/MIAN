@@ -19,12 +19,17 @@ class Generator(nn.Module):
         self.gpu = gpu
         self.gpu2 = gpu2
 
-        self.dec6 = DecoderBlock(prev_feature_size+num_classes, num_filters * 16, num_filters * 16, num_domain, norm, gpu)
-        self.dec5 = DecoderBlock(num_filters * 16, num_filters * 8, num_filters * 8, num_domain, norm, gpu)
-        self.dec4 = DecoderBlock(num_filters * 8, num_filters * 4, num_filters * 4, num_domain, norm, gpu)
-        self.dec3 = DecoderBlock(num_filters * 4, num_filters * 2, num_filters * 2, num_domain, norm, gpu)
-        self.dec2 = DecoderBlock(num_filters * 2, num_filters * 1, num_filters * 1, num_domain, norm, gpu)
+        self.dec6 = UpsamplingBlock(prev_feature_size+num_classes, num_filters * 16, num_domain, norm,
+                                    kernel=2, stride=1, pad=0).to(gpu)
+        self.dec5 = UpsamplingBlock(num_filters * 16, num_filters * 8, num_domain, norm).to(gpu)
+        self.dec4 = UpsamplingBlock(num_filters * 8, num_filters * 4, num_domain, norm).to(gpu)
+        self.dec3 = UpsamplingBlock(num_filters * 4, num_filters * 2, num_domain, norm).to(gpu)
+        self.dec2 = UpsamplingBlock(num_filters * 2, num_filters * 1, num_domain, norm).to(gpu)
         self.dec1 = nn.ConvTranspose2d(num_filters * 1, 3, kernel_size=4, stride=2, padding=1).to(gpu)
+
+        # self.dec3 = DecoderBlock(prev_feature_size+num_classes, num_filters * 8, num_filters * 8, num_domain, norm, gpu)
+        # self.dec2 = DecoderBlock(num_filters * 8, num_filters * 8, num_filters * 4, num_domain, norm, gpu)
+        # self.dec1 = nn.ConvTranspose2d(num_filters * 4, 3, kernel_size=4, stride=2, padding=1).to(gpu)
 
     def _tile_label_code(self, feature, label):
         w, h = feature.size()[-2], feature.size()[-1]

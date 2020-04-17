@@ -18,15 +18,18 @@ class IMGDiscriminator(nn.Module):
         curr_dim = channel
         next_dim = conv_dim
 
-        downsample = []
-        for i in range(repeat_num):
-            downsample.append(spectral_norm(nn.Conv2d(curr_dim, next_dim, kernel_size=4, stride=2, padding=1)))
-            downsample.append(nn.LeakyReLU(0.01))
-            curr_dim = next_dim
-            next_dim *= 2
-
-        #downsample.append(spectral_norm(nn.Conv2d(next_dim//2, 1024, kernel_size=3, stride=2, padding=0)))
-        #downsample.append(nn.LeakyReLU(0.01))
+        downsample = [
+            spectral_norm(nn.Conv2d(3, 64, kernel_size=4, stride=2, padding=1)),
+            nn.LeakyReLU(0.01),
+            spectral_norm(nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1)),
+            nn.LeakyReLU(0.01),
+            spectral_norm(nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1)),
+            nn.LeakyReLU(0.01),
+            spectral_norm(nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1)),
+            nn.LeakyReLU(0.01),
+            spectral_norm(nn.Conv2d(512, 1024, kernel_size=4, stride=2, padding=1)),
+            nn.LeakyReLU(0.01),
+        ]
         self.downsample = nn.Sequential(*downsample)
 
         self.psi = spectral_norm(nn.Linear(1024, 1))

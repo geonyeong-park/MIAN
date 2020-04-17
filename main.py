@@ -65,8 +65,6 @@ def main(config, args):
     if args.advcoeff is not None:
         c = args.advcoeff
         print('advcoeff: ', c)
-        config['train']['lambda']['base_only']['bloss_AdvDcls']['init'] = c
-        config['train']['lambda']['base_only']['bloss_AdvDcls']['final'] = c
         config['train']['lambda']['base_only']['bloss_fake']['init'] = c
         config['train']['lambda']['base_only']['bloss_fake']['final'] = c
     if args.DGlr is not None:
@@ -137,7 +135,7 @@ def main(config, args):
         prev_feature_size = 2048
     elif config['train']['base'] == 'VGG':
         basemodel = DeeplabVGG(num_classes=num_classes, partial=partial)
-        prev_feature_size = 4096
+        prev_feature_size = 512
 
     basemodel.to(gpu_map['basemodel'])
 

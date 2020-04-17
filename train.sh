@@ -1,9 +1,5 @@
 #!/bin/bash
 
-undersample="False"
-run_name="office_second_exp_bnO"
-domain=("amazon" "webcam" "dslr")
-
 advcoeff=(0.1 0.05 0.01 0.005)
 DGlr=(0.0003 0.0005)
 pixAdv='LS'

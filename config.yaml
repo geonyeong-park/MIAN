@@ -7,21 +7,21 @@ exp_setting:
 
 
 data:
-  task: 'office_caltech_10'  # office, office_caltech_10, office_home
+  task: 'office'  # office, office_caltech_10, office_home
   input_size: 256
   crop_size: 224
   D_size: 64
-  num_classes: 10 # office:31, office_caltech_10: 10, office_home: 65
-  source: ['Caltech', 'Webcam', 'DSLR']
+  num_classes: 31 # office:31, office_caltech_10: 10, office_home: 65
+  source: ['DSLR', 'Webcam'] 
   target: 'Amazon'
-  num_domain: 4
+  num_domain: 3
   num_workers: 1
   ignore_label: 255
 
 
 train:
   num_steps: 100000
-  num_steps_stop: 100000
+  num_steps_stop: 50000
   batch_size: 32
   partial: False
 
@@ -45,8 +45,8 @@ train:
         final: 1.
         step: 1.
       bloss_AdvFeat:
-        init: 0.1
-        final: 0.1
+        init: 0.
+        final: 0.
         step: 1.
     netG:
       Gloss_fake:
@@ -82,7 +82,7 @@ train:
     pixAdv: 'LS'
     GP: 30
     n_critic: 5
-  base: 'VGG'  # Alex, VGG, ResNet
+  base: 'ResNet'  # Alex, VGG, ResNet
 
 model:
   netD:
@@ -92,8 +92,8 @@ model:
       img: 5
   netG:
     conv_dim: 
-      ResNet: 128
+      ResNet: 64
       VGG: 64
       Alex: 64
-    norm: 'BN'  # CondBN, CondIN, BN, IN
+    norm: 'CondBN'  # CondBN, CondIN, BN, IN
 

@@ -29,6 +29,7 @@ class ResNetMulti(nn.Module):
         conv3 = self.conv3(conv2)
         conv4 = self.conv4(conv3)
         conv5 = self.conv5(conv4)
+
         h = self.avgpool(conv5)
         h = torch.flatten(h, 1)
         pred = self.predict(h)
