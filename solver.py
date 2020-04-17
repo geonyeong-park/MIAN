@@ -155,8 +155,12 @@ class Solver(object):
         std=torch.FloatTensor([0.229, 0.224, 0.225]).view(1, -1, 1, 1).repeat(N, 1, H, W)
         return mean+data*std
 
-    def _fixed_test_domain_label(self):
-        fixed_label = torch.LongTensor(np.array([i for i in range(self.num_domain)]))
+    def _fixed_test_domain_label(self, num_sample):
+        fixed_label = []
+        for i in range(self.num_domain):
+            fixed_label.append([i]*num_sample)
+
+        fixed_label = torch.LongTensor(np.array(fixed_label))
         return fixed_label
 
     def _fake_domain_label(self, tensor, model):
@@ -280,9 +284,13 @@ class Solver(object):
             torch.eye(self.num_classes+1)[-1].unsqueeze(0).repeat(self.batch_size, 1)], dim=0).to(self.gpu_map['netG'])
 
         self.domain_label = self.domain_label.to(self.gpu_map['netG'])
+        rand_idx = torch.randperm(self.domain_label.size(0))
+        self.shuffled_domain_label = self.domain_label[rand_idx]
+
         label_onehot = label_onehot.to(self.gpu_map['netG'])
         pix_feature = pix_feature.to(self.gpu_map['netG'])
-        trsfakeImg = self.netG(self.domain_label, label_onehot, pix_feature)
+        trsfakeImg = self.netG(self.shuffled_domain_label, label_onehot, pix_feature)
+        idtfakeImg = self.netG(self.domain_label, label_onehot, pix_feature)
 
         # -----------------------------
         # 3. Train Discriminators
@@ -301,7 +309,7 @@ class Solver(object):
         self.optDFeat.step()
 
         fake_logit, _ = self.netDImg(trsfakeImg.detach().to(self.gpu_map['netDImg']),
-                                     self.domain_label.to(self.gpu_map['netDImg']),
+                                     self.shuffled_domain_label.to(self.gpu_map['netDImg']),
                                      adv_training=False)
         images_D = F.interpolate(images, size=(self.D_size, self.D_size), mode='bilinear').to(self.gpu_map['netDImg'])
         real_logit, aux_logit = self.netDImg(images_D,
@@ -345,19 +353,22 @@ class Solver(object):
         if (i_iter+1) % self.config['train']['GAN']['n_critic'] == 0:
             # 5-1. G
             self.optG.zero_grad()
+            self.optBase.zero_grad()
 
             fake_logit, aux_logit = self.netDImg(trsfakeImg.to(self.gpu_map['netDImg']),
-                                                 self.domain_label.to(self.gpu_map['netDImg']),
+                                                 self.shuffled_domain_label.to(self.gpu_map['netDImg']),
                                                  adv_training=False)
             self.Gloss_fake = self._G_hingeLoss(fake_logit)
-            #self.Gloss_cyc = torch.mean(torch.abs(images - trsfakeImg.to(self.gpu0)))
+            self.Gloss_cyc = torch.mean(torch.abs(images_D - idtfakeImg.to(self.gpu0)))
             self.Gloss_auxsem = self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
 
             self._backprop_weighted_losses(self.loss_lambda['netG'],
                                            auxloss_under_ths=True,
                                            retain_graph=True)
+            self.optBase.step()
             self.optG.step()
 
+            """
             # 5-2. Domain Adversarial loss for Base only
             self.optBase.zero_grad()
 
@@ -370,6 +381,7 @@ class Solver(object):
                                            auxloss_under_ths=True,
                                            retain_graph=False)
             self.optBase.step()
+            """
         # -----------------------------------------------
         # -----------------------------------------------
 
@@ -404,13 +416,14 @@ class Solver(object):
                     torch.eye(self.num_classes+1)[-1].unsqueeze(0)])
 
                 image_fake_list = [F.interpolate(image_fixed, size=(self.D_size, self.D_size), mode='bilinear')]
-                domain_fixed = self._fixed_test_domain_label()
+                domain_fixed = self._fixed_test_domain_label(self.num_domain)
 
-                pix_feature, adv_feature, _ = self.basemodel(image_fixed.to(self.gpu0))
-                image_fake = self.netG(domain_fixed.to(self.gpu_map['netG']),
-                                       label_fixed_onehot.to(self.gpu_map['netG']),
-                                       pix_feature.to(self.gpu_map['netG']))
-                image_fake_list.append(image_fake)
+                for d in domain_fixed:
+                    pix_feature, adv_feature, _ = self.basemodel(image_fixed.to(self.gpu0))
+                    image_fake = self.netG(d.to(self.gpu_map['netG']),
+                                           label_fixed_onehot.to(self.gpu_map['netG']),
+                                           pix_feature.to(self.gpu_map['netG']))
+                    image_fake_list.append(image_fake)
 
                 image_concat = torch.cat(image_fake_list, dim=3)
                 sample_path = os.path.join(self.log_dir, '{}-FixTrsimages.jpg'.format(i_iter+1))

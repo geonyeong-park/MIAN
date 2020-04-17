@@ -2,3 +2,6 @@
 *.pth
 *.png
 *.jpg
+log/
+snapshots/
+data/

@@ -33,7 +33,7 @@ class ResNetMulti(nn.Module):
         h = self.avgpool(conv5)
         h = torch.flatten(h, 1)
         pred = self.predict(h)
-        return h, h, pred
+        return conv5, h, pred
 
     def get_1x_lr_params_NOscale(self):
         """
@@ -71,7 +71,7 @@ class ResNetMulti(nn.Module):
 
     def optim_parameters(self, lr):
         return [{'params': self.get_1x_lr_params_NOscale(), 'lr': lr},
-                {'params': self.get_10x_lr_params(), 'lr': 10*lr}]
+                {'params': self.get_10x_lr_params(), 'lr': lr}]
 
 
 def DeeplabRes(num_classes=21, partial=False):

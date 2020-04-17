@@ -10,7 +10,7 @@ data:
   task: 'office'  # office, office_caltech_10, office_home
   input_size: 256
   crop_size: 224
-  D_size: 64
+  D_size: 56
   num_classes: 31 # office:31, office_caltech_10: 10, office_home: 65
   source: ['DSLR', 'Webcam'] 
   target: 'Amazon'
@@ -45,26 +45,21 @@ train:
         final: 1.
         step: 1.
       bloss_AdvFeat:
-        init: 0.
-        final: 0.
+        init: 0.1
+        final: 0.1
         step: 1.
     netG:
       Gloss_fake:
-        init: 1.
-        final: 1.
+        init: 0.01
+        final: 0.01
         step: 1
       Gloss_auxsem:
-        init: 1.
-        final: 1.
+        init: 0.1
+        final: 0.1
         step: 1
-    base_only:
-      bloss_fake:
-        init: 0.01
-        final: 0.01
-        step: 1
-      bloss_auxsem:
-        init: 0.01
-        final: 0.01
+      Gloss_cyc:
+        init: 0.1
+        final: 0.1
         step: 1
     netD:
       Dloss_fakereal:
@@ -72,15 +67,15 @@ train:
         final: 1.
         step: 1
       Dloss_auxsem:
-        init: 10.
-        final: 10.
+        init: 1.
+        final: 1.
         step: 1
 
   GAN:
     main: 'WGAN_GP'
     featAdv: 'LS'
     pixAdv: 'LS'
-    GP: 30
+    GP: 10
     n_critic: 5
   base: 'ResNet'  # Alex, VGG, ResNet
 

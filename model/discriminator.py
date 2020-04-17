@@ -19,15 +19,13 @@ class IMGDiscriminator(nn.Module):
         next_dim = conv_dim
 
         downsample = [
-            spectral_norm(nn.Conv2d(3, 64, kernel_size=4, stride=2, padding=1)),
-            nn.LeakyReLU(0.01),
-            spectral_norm(nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1)),
+            spectral_norm(nn.Conv2d(3, 128, kernel_size=4, stride=2, padding=1)),
             nn.LeakyReLU(0.01),
             spectral_norm(nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1)),
             nn.LeakyReLU(0.01),
             spectral_norm(nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1)),
             nn.LeakyReLU(0.01),
-            spectral_norm(nn.Conv2d(512, 1024, kernel_size=4, stride=2, padding=1)),
+            spectral_norm(nn.Conv2d(512, 1024, kernel_size=3, stride=2, padding=0)),
             nn.LeakyReLU(0.01),
         ]
         self.downsample = nn.Sequential(*downsample)
@@ -41,7 +39,7 @@ class IMGDiscriminator(nn.Module):
                 ResidualBlock(1024, 1024, num_domain, 'SN'),
                 ResidualBlock(1024, 1024, num_domain, 'SN'),
                 ResidualBlock(1024, 1024, num_domain, 'SN'),
-                nn.Conv2d(1024, num_classes, kernel_size=2, stride=1, padding=0)]))
+                nn.Conv2d(1024, num_classes, kernel_size=3, stride=1, padding=0)]))
 
         self.aux_clf = nn.ModuleList(aux_clf)
 
@@ -67,9 +65,12 @@ class ResDiscriminator(nn.Module):
         super(ResDiscriminator, self).__init__()
 
         self.conv_domain_cls_patch = nn.Sequential(*[
-            nn.Linear(channel, channel//4),
+            nn.Linear(channel, channel//2),
             nn.ReLU(inplace=True),
-            nn.Linear(channel//4, num_domain)])
+            nn.Linear(channel//2, channel//4),
+            nn.ReLU(inplace=True),
+            nn.Linear(channel//4, num_domain)
+        ])
 
     def forward(self, x):
         out_src = self.conv_domain_cls_patch(x)
