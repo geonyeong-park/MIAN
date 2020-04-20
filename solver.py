@@ -398,6 +398,7 @@ class Solver(object):
 
             log += "\nAcc: {:.2f}".format(acc.item()*100)
             print(log)
+            #print((nn.Sigmoid()(DFeatlogit).max(1)[1]==self.domain_label).float().mean())
 
         if self.config['exp_setting']['use_tensorboard']:
             if (i_iter+1) % self.log_step == 0:
