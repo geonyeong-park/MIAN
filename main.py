@@ -94,7 +94,7 @@ def main(config, args):
     gpu_map = {
         'basemodel': 'cuda:0',
         'C': 'cuda:0',
-        'netDImg': 'cuda:0',
+        'netDImg': 'cuda:1',
         'netDFeat': 'cuda:0',
         'netG': 'cuda:1',
         'netG_2': 'cuda:1',

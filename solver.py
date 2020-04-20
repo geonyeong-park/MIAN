@@ -12,6 +12,8 @@ import datetime
 from PIL import Image
 from logger import Logger
 from torchvision.utils import save_image
+from sklearn.manifold import TSNE
+from Visualize import plot_embedding
 import horovod.torch as hvd
 import math
 import warnings
@@ -92,6 +94,7 @@ class Solver(object):
         self.log_step = 100
         self.sample_step = 100
         self.val_step = 100
+        self.tsne_step = 2000
         self.save_step = 1000 #5000
         self.logger = Logger(self.log_dir)
 
@@ -110,6 +113,7 @@ class Solver(object):
                 loss_lambda[k][sub_k]['inc'] = (final-init)/step
                 loss_lambda[k][sub_k]['final'] = final
         self.loss_lambda = loss_lambda
+        self.tsne = TSNE(n_components=2, perplexity=20, init='pca', n_iter=3000)
 
     def train(self):
         # Broadcast parameters and optimizer state for every processes
@@ -130,6 +134,10 @@ class Solver(object):
                 self.C1.eval()
                 self.C2.eval()
                 self._validation(i_iter)
+
+            if (i_iter+1) % self.tsne_step == 0:
+                self._tsne(i_iter)
+                self.basemodel.to(self.gpu_map['basemodel'])
 
             # update lambda
             for k in self.loss_lambda.keys():
@@ -204,7 +212,7 @@ class Solver(object):
         return - torch.mean(fake)
 
     def _discrepancy(self, out1, out2):
-        return torch.mean(torch.abs(F.softmax(out1) - F.softmax(out2)))
+        return torch.mean(torch.abs(F.softmax(out1, dim=1) - F.softmax(out2, dim=1)))
 
     def _maximum_classifier_discrepancy(self, images, labels):
         _, h = self.basemodel(images)
@@ -393,7 +401,7 @@ class Solver(object):
                                                  self.shuffled_domain_label.to(self.gpu_map['netDImg']),
                                                  adv_training=False)
             self.Gloss_fake = self._G_hingeLoss(fake_logit)
-            self.Gloss_cyc = torch.mean(torch.abs(images_D - idtfakeImg.to(self.gpu0)))
+            self.Gloss_cyc = torch.mean(torch.abs(images_D - idtfakeImg.to(self.gpu_map['netDImg'])))
             self.Gloss_auxsem = self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
 
             self._backprop_weighted_losses(self.loss_lambda['netG'],
@@ -431,7 +439,6 @@ class Solver(object):
 
             log += "\nAcc: {:.2f}".format(acc.item()*100)
             print(log)
-            #print((nn.Sigmoid()(DFeatlogit).max(1)[1]==self.domain_label).float().mean())
 
         if self.config['exp_setting']['use_tensorboard']:
             if (i_iter+1) % self.log_step == 0:
@@ -507,6 +514,7 @@ class Solver(object):
                 correct3 += pred_ensemble.eq(target_labels.data).cpu().sum()
                 size += k
 
+        print(size)
         acc1 = 100. * correct1 / size
         acc2 = 100. * correct2 / size
         acc3 = 100. * correct3 / size
@@ -519,4 +527,27 @@ class Solver(object):
         with open(os.path.join(self.log_dir, 'val_result.txt'), 'a') as f:
             f.write(info_str+'\n')
             f.close()
+
+    def _tsne(self, i_iter):
+        # Plot t-SNE of hidden feature
+        source_images1, source_labels1 = next(self.loader_iter)
+        source_images2, source_labels2 = next(self.loader_iter)
+        target_images1, target_labels1 = next(self.target_iter)
+        target_images2, target_labels2 = next(self.target_iter)
+        tsne_images = torch.cat([source_images1[:self.batch_size*(self.num_domain-1)],
+                                 target_images1,
+                                 source_images2[:self.batch_size*(self.num_domain-1)],
+                                 target_images2], dim=0)
+        tsne_labels = torch.cat([source_labels1[:self.batch_size*(self.num_domain-1)],
+                                 target_labels1,
+                                 source_labels2[:self.batch_size*(self.num_domain-1)],
+                                 target_labels2], dim=0)
+        tsne_domain = torch.cat([self.domain_label, self.domain_label], dim=0)
+
+        sample_path = os.path.join(self.log_dir, '{}-tSNE.jpg'.format(i_iter+1))
+        _, h = self.basemodel.cpu()(tsne_images.cpu())
+        tsne = self.tsne.fit_transform(h.data.cpu().numpy())
+        plot_embedding(tsne, tsne_labels.data.cpu().numpy(),
+                       tsne_domain.data.cpu().numpy(), sample_path)
+        print('{} iter; saved t-SNE'.format(i_iter))
 
