@@ -34,7 +34,7 @@ train:
   netG:
     lr: 0.0001
     momentum: 0.9
-  lr_decay_power: 0.85
+  lr_decay_power: 0.75
   weight_decay: 0.0005
   aux_sem_thres: 0.3
 
