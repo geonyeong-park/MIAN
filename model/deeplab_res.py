@@ -21,7 +21,6 @@ class ResNetMulti(nn.Module):
         self.conv5 = nn.Sequential(*list(resnet.children())[7]) # 2048,7,7
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.predict = nn.Linear(2048, num_classes)
 
     def forward(self, x):
         conv1 = self.conv1(x)
@@ -32,8 +31,8 @@ class ResNetMulti(nn.Module):
 
         h = self.avgpool(conv5)
         h = torch.flatten(h, 1)
-        pred = self.predict(h)
-        return conv5, h, pred
+
+        return conv5, h
 
     def get_1x_lr_params_NOscale(self):
         """
@@ -57,22 +56,8 @@ class ResNetMulti(nn.Module):
                     if k.requires_grad:
                         yield k
 
-    def get_10x_lr_params(self):
-        """
-        This generator returns all the parameters for the last layer of the net,
-        which does the classification of pixel into classes
-        """
-        b = []
-        b.append(self.predict.parameters())
-
-        for j in range(len(b)):
-            for i in b[j]:
-                yield i
-
     def optim_parameters(self, lr):
-        return [{'params': self.get_1x_lr_params_NOscale(), 'lr': lr},
-                {'params': self.get_10x_lr_params(), 'lr': lr}]
-
+        return [{'params': self.get_1x_lr_params_NOscale(), 'lr': lr}]
 
 def DeeplabRes(num_classes=21, partial=False):
     model = ResNetMulti(num_classes, partial)

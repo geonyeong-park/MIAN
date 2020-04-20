@@ -7,7 +7,6 @@ import os
 import os.path as osp
 import matplotlib.pyplot as plt
 from utils.loss import CrossEntropy2d, loss_calc, lr_poly, adjust_learning_rate, seg_accuracy, per_class_iu
-from utils.visualize import colorize_mask, save_prediction
 import time
 import datetime
 from PIL import Image
@@ -20,9 +19,9 @@ import time
 
 
 class Solver(object):
-    def __init__(self, base, basemodel, netDImg, netDFeat, netG, loader, TargetLoader,
+    def __init__(self, base, basemodel, C1, C2, netDImg, netDFeat, netG, loader, TargetLoader,
                  base_lr, DImg_lr, DFeat_lr, G_lr,
-                 optBase, optDImg, optDFeat, optG, config, args, gpu_map):
+                 optBase, optC1, optC2, optDImg, optDFeat, optG, config, args, gpu_map):
         self.args = args
         self.config = config
         self.gpu = args.gpu
@@ -34,12 +33,16 @@ class Solver(object):
 
         self.base = base
         self.basemodel = basemodel
+        self.C1 = C1
+        self.C2 = C2
         self.netDImg = netDImg
         self.netDFeat = netDFeat
         self.netG = netG
         self.loader = loader
         self.TargetLoader = TargetLoader
         self.optBase = optBase
+        self.optC1 = optC1
+        self.optC2 = optC2
         self.optDImg = optDImg
         self.optDFeat = optDFeat
         self.optG = optG
@@ -115,12 +118,17 @@ class Solver(object):
 
         for i_iter in range(self.total_step):
             self.basemodel.train()
+            self.C1.train()
+            self.C2.train()
             self.netDFeat.train()
             self.netDImg.train()
             self.netG.train()
             self._train_step(i_iter)
 
             if (i_iter+1) % self.val_step == 0:
+                self.basemodel.eval()
+                self.C1.eval()
+                self.C2.eval()
                 self._validation(i_iter)
 
             # update lambda
@@ -135,19 +143,11 @@ class Solver(object):
 
     def _adjust_lr_opts(self, i_iter):
         self.log_lr['base'] = adjust_learning_rate(self.optBase, self.base_lr, i_iter, self.total_step, self.power)
+        self.log_lr['C1'] = adjust_learning_rate(self.optC1, self.base_lr, i_iter, self.total_step, self.power)
+        self.log_lr['C2'] = adjust_learning_rate(self.optC2, self.base_lr, i_iter, self.total_step, self.power)
         self.log_lr['DImg'] = adjust_learning_rate(self.optDImg, self.DImg_lr, i_iter, self.total_step, self.power)
         self.log_lr['DFeat'] = adjust_learning_rate(self.optDFeat, self.DFeat_lr, i_iter, self.total_step, self.power)
         self.log_lr['G'] = adjust_learning_rate(self.optG, self.G_lr, i_iter, self.total_step, self.power)
-
-    def _broadcast_param_opt(self):
-        hvd.broadcast_parameters(self.basemodel.state_dict(), root_rank=0)
-        hvd.broadcast_parameters(self.netDFeat.state_dict(), root_rank=0)
-        hvd.broadcast_parameters(self.netDImg.state_dict(), root_rank=0)
-        hvd.broadcast_parameters(self.netG.state_dict(), root_rank=0)
-        hvd.broadcast_optimizer_state(self.optBase, root_rank=0)
-        hvd.broadcast_optimizer_state(self.optDFeat, root_rank=0)
-        hvd.broadcast_optimizer_state(self.optDImg, root_rank=0)
-        hvd.broadcast_optimizer_state(self.optG, root_rank=0)
 
     def _denorm(self, data):
         N, _, H, W = data.size()
@@ -203,10 +203,24 @@ class Solver(object):
     def _G_hingeLoss(self, fake):
         return - torch.mean(fake)
 
-    def _save_prediction(self, path, pred, lb):
-        pd_col = colorize_mask(pred)
-        lb_col = colorize_mask(lb)
-        save_prediction([pd_col, lb_col], path)
+    def _discrepancy(self, out1, out2):
+        return torch.mean(torch.abs(F.softmax(out1) - F.softmax(out2)))
+
+    def _maximum_classifier_discrepancy(self, images, labels):
+        _, h = self.basemodel(images)
+        C1_feat = self.C1(h)
+        C2_feat = self.C2(h)
+        output_s1 = C1_feat[:self.batch_size*(self.num_domain-1)]
+        output_s2 = C2_feat[:self.batch_size*(self.num_domain-1)]
+
+        loss_s1 = nn.CrossEntropyLoss()(output_s1, labels)
+        loss_s2 = nn.CrossEntropyLoss()(output_s2, labels)
+        loss_s = loss_s1 + loss_s2
+
+        output_t1 = C1_feat[self.batch_size*(self.num_domain-1):]
+        output_t2 = C2_feat[self.batch_size*(self.num_domain-1):]
+        loss_dis = self._discrepancy(output_t1, output_t2)
+        return loss_s, loss_dis
 
     def _aux_semantic_loss(self, aux_logit_5D, label):
         # aux_logit_5D: (num_source, batch, c, w, h)
@@ -233,11 +247,15 @@ class Solver(object):
         class_label = class_label.to(self.gpu_map['netG'])
         return self.netG(domain_label, class_label, concat1, concat2, concat3, concat4, concat5)
 
-    def _backprop_weighted_losses(self, lambdas, auxloss_under_ths, retain_graph=False):
-        if not auxloss_under_ths:
-            for key in lambdas.keys():
-                if 'aux' in key: lambdas[key]['cur']=0.
+    def _zero_grad(self):
+        self.optDFeat.zero_grad()
+        self.optDImg.zero_grad()
+        self.optBase.zero_grad()
+        self.optC1.zero_grad()
+        self.optC2.zero_grad()
 
+
+    def _backprop_weighted_losses(self, lambdas, retain_graph=False):
         loss = 0
         for k in lambdas.keys():
             k_loss = getattr(self, k)
@@ -248,11 +266,7 @@ class Solver(object):
 
     def _train_step(self, i_iter):
         self._adjust_lr_opts(i_iter)
-
-        self.optDFeat.zero_grad()
-        self.optDImg.zero_grad()
-        self.optBase.zero_grad()
-
+        self._zero_grad()
 
         # -----------------------------
         # 1. Load data
@@ -276,7 +290,7 @@ class Solver(object):
         # -----------------------------
 
         """ Classification and Adversarial Loss (Basemodel) """
-        pix_feature, adv_feature, pred = self.basemodel(images)
+        pix_feature, adv_feature = self.basemodel(images)
 
         """ Idt, Fake, Cycle, DCls, Semantic Loss (Generator) """
         label_onehot = torch.cat([
@@ -321,7 +335,6 @@ class Solver(object):
         # At this moment we don't care about semantic loss of target data
 
         self._backprop_weighted_losses(self.loss_lambda['netD'],
-                                       auxloss_under_ths=True,
                                        retain_graph=True)
         self.optDImg.step()
         # ----------------------------
@@ -333,18 +346,37 @@ class Solver(object):
         for param in self.netDFeat.parameters():
             param.requires_grad = False
 
-        self.bloss_Clf = nn.CrossEntropyLoss()(pred[ :self.num_source*self.batch_size].to(self.gpu0),
-                                               labels)
 
+        # ----------------------------
+        # Maximum Classifier Discrepancy
+        # ----------------------------
+        loss_s, _ = self._maximum_classifier_discrepancy(images, labels)
+        loss_s.backward()
+        self.optBase.step()
+        self.optC1.step()
+        self.optC2.step()
+        self._zero_grad()
+
+        loss_s, loss_dis = self._maximum_classifier_discrepancy(images, labels)
+        loss = loss_s - loss_dis
+        loss.backward()
+        self.optC1.step()
+        self.optC2.step()
+        self._zero_grad()
+
+        for i in range(4):
+            _, loss_dis = self._maximum_classifier_discrepancy(images, labels)
+            loss_dis.backward()
+            self.optBase.step()
+            self._zero_grad()
+
+        # -------------------------
+
+        _, adv_feature = self.basemodel(images)
         DFeatlogit = self.netDFeat(adv_feature.to(self.gpu_map['netDFeat']))
-        self.bloss_AdvFeat = self.FeatAdv_loss(DFeatlogit,
-                                               self._fake_domain_label(DFeatlogit, 'Feat'))
-
-        retain = True if (i_iter+1) % self.config['train']['GAN']['n_critic'] == 0 else False
-
-        self._backprop_weighted_losses(self.loss_lambda['base_model'],
-                                       auxloss_under_ths=True,
-                                       retain_graph=retain)
+        bloss_AdvFeat = self.FeatAdv_loss(DFeatlogit,
+                                          self._fake_domain_label(DFeatlogit, 'Feat'))
+        bloss_AdvFeat.backward()
         self.optBase.step()
 
         # ----------------------------
@@ -355,6 +387,8 @@ class Solver(object):
             self.optG.zero_grad()
             self.optBase.zero_grad()
 
+            pix_feature, _ = self.basemodel(images)
+            trsfakeImg = self.netG(self.shuffled_domain_label, label_onehot, pix_feature)
             fake_logit, aux_logit = self.netDImg(trsfakeImg.to(self.gpu_map['netDImg']),
                                                  self.shuffled_domain_label.to(self.gpu_map['netDImg']),
                                                  adv_training=False)
@@ -363,7 +397,6 @@ class Solver(object):
             self.Gloss_auxsem = self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
 
             self._backprop_weighted_losses(self.loss_lambda['netG'],
-                                           auxloss_under_ths=True,
                                            retain_graph=True)
             self.optBase.step()
             self.optG.step()
@@ -378,7 +411,6 @@ class Solver(object):
             self.bloss_fake = self._G_hingeLoss(AdvDcls_fake_logit)
             self.bloss_auxsem = self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
             self._backprop_weighted_losses(self.loss_lambda['base_only'],
-                                           auxloss_under_ths=True,
                                            retain_graph=False)
             self.optBase.step()
             """
@@ -391,7 +423,8 @@ class Solver(object):
             log = "Elapsed [{}], Iteration [{}/{}]\n".format(et, i_iter+1, self.early_stop_step)
             for tag, value in self.log_loss.items():
                 log += ", {}: {:.4f}".format(tag, value)
-            histList = np.zeros((self.num_classes, self.num_classes))
+            _, h = self.basemodel(images)
+            pred = self.C1(h)
             source_pd = pred.detach().data[:self.batch_size*self.num_source].max(1)[1].cpu().numpy()
             source_lb = labels.data.cpu().numpy()
             acc = np.mean(source_pd == source_lb)
@@ -420,7 +453,7 @@ class Solver(object):
                 domain_fixed = self._fixed_test_domain_label(self.num_domain)
 
                 for d in domain_fixed:
-                    pix_feature, adv_feature, _ = self.basemodel(image_fixed.to(self.gpu0))
+                    pix_feature, adv_feature = self.basemodel(image_fixed.to(self.gpu0))
                     image_fake = self.netG(d.to(self.gpu_map['netG']),
                                            label_fixed_onehot.to(self.gpu_map['netG']),
                                            pix_feature.to(self.gpu_map['netG']))
@@ -441,9 +474,11 @@ class Solver(object):
             }, osp.join(self.snapshot_dir, 'pretrain_'+str(i_iter+1)+'.pth'))
 
     def _validation(self, i_iter):
-        accList = []
-        histList = np.zeros((self.num_classes, self.num_classes))
         val_iter = 0
+        size = 0
+        correct1 = 0
+        correct2 = 0
+        correct3 = 0
 
         for i in range(len(self.TargetLoader) // self.batch_size):
             with torch.no_grad():
@@ -457,17 +492,28 @@ class Solver(object):
                 target_images = target_images.to(self.gpu0)
                 target_labels = target_labels.to(self.gpu0)
 
-                _, _, target_pred = self.basemodel(target_images)
+                _, h = self.basemodel(target_images)
+                if torch.isnan(h).any(): raise ValueError
 
-                if torch.isnan(target_pred).any(): raise ValueError
-                target_pred = target_pred.max(1)[1].data.cpu().numpy()
-                target_labels = target_labels.data.cpu().numpy()
-                acc = np.mean(target_pred == target_labels)
-                accList.append(acc.item() * 100)
+                output1 = self.C1(h)
+                output2 = self.C2(h)
+                output_ensemble = output1 + output2
+                pred1 = output1.data.max(1)[1]
+                pred2 = output2.data.max(1)[1]
+                pred_ensemble = output_ensemble.data.max(1)[1]
+                k = target_labels.data.size()[0]
+                correct1 += pred1.eq(target_labels.data).cpu().sum()
+                correct2 += pred2.eq(target_labels.data).cpu().sum()
+                correct3 += pred_ensemble.eq(target_labels.data).cpu().sum()
+                size += k
 
-        info_str = 'Iteration {}: acc:{:0.2f}'.format(i_iter+1,
-                                                      np.mean(accList))
-        self.logger.scalar_summary('metrics/val_acc', np.mean(accList), i_iter+1)
+        acc1 = 100. * correct1 / size
+        acc2 = 100. * correct2 / size
+        acc3 = 100. * correct3 / size
+
+        info_str = 'Iteration {}: acc1:{:0.2f} acc2:{:0.2f} acc_ensemble:{:0.2f}'.format(i_iter+1,
+                                                                                         acc1, acc2, acc3)
+        self.logger.scalar_summary('metrics/val_acc', acc3, i_iter+1)
         print(info_str)
 
         with open(os.path.join(self.log_dir, 'val_result.txt'), 'a') as f:
