@@ -84,6 +84,8 @@ class Solver(object):
         # Broadcast parameters and optimizer state for every processes
 
         self.start_time = time.time()
+        self.iba.estimate(self.basemodel, self.loader, self.domain_label, device=self.gpu0, n_samples=1, progbar=False)
+        self.optBottleneck = torch.optim.Adam(lr=1e-5, params=self.iba.parameters())
 
         for i_iter in range(self.total_step):
             self.basemodel.train()
@@ -97,6 +99,7 @@ class Solver(object):
                 self.C1.eval()
                 self.C2.eval()
                 self._validation(i_iter)
+                self.iba.estimate(self.basemodel, self.loader, self.domain_label, device=self.gpu0, n_samples=1, progbar=False)
 
             if (i_iter+1) % self.tsne_step == 0:
                 self._tsne(i_iter)
@@ -275,6 +278,16 @@ class Solver(object):
             self.optBase.step()
             self._zero_grad()
 
+        # -------------------------
+        # Information Bottleneck
+        # -------------------------
+        with self.iba.restrict_flow():
+            _, h = self.basemodel(images, self.domain_label.to(self.gpu0))
+            info_loss = self.iba.capacity().mean() * 10.
+            info_loss.backward()
+            self.log_loss['bloss_info'] = info_loss.item()
+            self.optBase.step()
+            self.optBottleneck.step()
         # -------------------------
 
         adv_feature, _ = self.basemodel(images)

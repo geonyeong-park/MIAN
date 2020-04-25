@@ -17,16 +17,19 @@ class ResNetMulti(nn.Module):
         self.conv2 = nn.Sequential(*list(resnet.children())[3:5]) # 256,56,56
         self.conv3 = nn.Sequential(*list(resnet.children())[5]) # 512,28,28
         self.conv4 = nn.Sequential(*list(resnet.children())[6]) # 1024,14,14
-        self.conv5 = nn.Sequential(*list(resnet.children())[7]) # 2048,7,7
+        self.conv5 = nn.Sequential(*list(resnet.children())[7])
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
 
-    def forward(self, x):
+    def forward(self, x, d):
+        d = torch.eye(self.num_domain)[d.to(torch.long)]
+        domain_code = d.view(-1, self.num_domain, 1, 1).repeat(1, 1, 7, 7)
+
         conv1 = self.conv1(x)
         conv2 = self.conv2(conv1)
         conv3 = self.conv3(conv2)
         conv4 = self.conv4(conv3)
-        conv5 = self.conv5(conv4)
+        conv5 = self.conv5(conv4, domain_code)
 
         h = self.avgpool(conv5)
         h = torch.flatten(h, 1)
@@ -61,4 +64,5 @@ class ResNetMulti(nn.Module):
 def DeeplabRes(num_classes=21):
     model = ResNetMulti(num_classes)
     return model
+
 

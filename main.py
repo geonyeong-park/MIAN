@@ -46,7 +46,6 @@ def get_arguments():
     parser.add_argument("--optimizer", type=str, default=None, required=False,
                         help="")
     parser.add_argument("--resume", type=str, default=None, required=False,
-                        help="")
 
     return parser.parse_args()
 
@@ -173,7 +172,6 @@ def main(config, args):
     solver = Solver(basemodel, c1, c2, netDFeat, loader, TargetLoader,
                     base_lr, DFeat_lr, task, num_domain,
                     optBase, optC1, optC2, optDFeat, config, args, gpu_map)
-
     # ------------------------
     # 4. Train
     # ------------------------
