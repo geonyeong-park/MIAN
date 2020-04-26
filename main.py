@@ -46,6 +46,8 @@ def get_arguments():
                         help="")
     parser.add_argument("--Gfake_cyc", type=float, default=None, required=False,
                         help="")
+    parser.add_argument("--target", type=str, default=None, required=False,
+                        help="")
 
     return parser.parse_args()
 
@@ -85,6 +87,12 @@ def main(config, args):
         config['train']['lambda']['netG']['Gloss_cyc']['final'] = c
         config['train']['lambda']['netG']['Gloss_fake']['init'] = c
         config['train']['lambda']['netG']['Gloss_fake']['final'] = c
+    if args.target is not None:
+        t = args.target
+        print('target: ', t)
+        dataset = config['data']['source'] + [config['data']['target']]
+        dataset.remove(t)
+        dataset = dataset + [t]
 
     # -------------------------------
 
@@ -105,7 +113,8 @@ def main(config, args):
     num_classes = config['data']['num_classes']
     input_size = config['data']['input_size']
     cropped_size = config['data']['crop_size']
-    dataset = config['data']['source'] + [config['data']['target']]
+    if args.target is None:
+        dataset = config['data']['source'] + [config['data']['target']]
     num_workers = config['data']['num_workers']
     batch_size = config['train']['batch_size']
     num_domain = len(dataset)

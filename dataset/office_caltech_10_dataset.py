@@ -33,13 +33,13 @@ class AmazonDataSet(data.Dataset):
         if split == 'train':
             assert resize >= cropsize
             if resize > cropsize:
-                image_transform = [torchvision.transforms.Resize(self.resize, interpolation=Image.BICUBIC),
+                image_transform = [torchvision.transforms.Resize((self.resize,self.resize), interpolation=Image.BICUBIC),
                                    torchvision.transforms.RandomCrop(self.cropsize)] + base_transform
             else:
-                image_transform = [torchvision.transforms.Resize(self.cropsize, interpolation=Image.BICUBIC)] + base_transform
+                image_transform = [torchvision.transforms.Resize((self.cropsize,self.cropsize), interpolation=Image.BICUBIC)] + base_transform
 
         elif split == 'val':
-            image_transform = [torchvision.transforms.Resize(self.cropsize, interpolation=Image.BICUBIC)] + base_transform
+            image_transform = [torchvision.transforms.Resize((self.cropsize,self.cropsize), interpolation=Image.BICUBIC)] + base_transform
 
         self.image_transform = torchvision.transforms.Compose(image_transform)
 
