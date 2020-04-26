@@ -95,7 +95,7 @@ def main(config, args):
         'basemodel': 'cuda:0',
         'C': 'cuda:0',
         'netDImg': 'cuda:1',
-        'netDFeat': 'cuda:0',
+        'netDFeat': 'cuda:1',
         'netG': 'cuda:1',
         'netG_2': 'cuda:1',
         'all_order': gpu
