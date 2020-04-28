@@ -101,7 +101,7 @@ class MultiDomainLoader(object):
         if return_target_label:
             label = torch.cat([i[1] for i in img_label_list], axis=0)
         else:
-            label = torch.cat([i[1] for i in img_label_list[:-1]], axis=0)
+            label = torch.cat([i[1].to(torch.long) for i in img_label_list[:-1]], axis=0)
 
         self.num += 1
         return img, label
@@ -121,10 +121,9 @@ class MultiDomainLoader(object):
         num_workers = self.num_workers
         assert num_workers == 1
 
-        collate_fn = lambda batch: augment_collate(batch, crop=None, halfcrop=None, flip=True)
-
+        #collate_fn = lambda batch: augment_collate(batch, crop=None, halfcrop=None, flip=True)
+        collate_fn=torch.utils.data.dataloader.default_collate
         if target:
-            collate_fn=torch.utils.data.dataloader.default_collate
             loader_tgt = torch.utils.data.DataLoader(self.target_valid_dataset,
                     batch_size=batch_size, num_workers=num_workers, drop_last=False,
                     collate_fn=collate_fn, pin_memory=True, shuffle=True)

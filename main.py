@@ -12,10 +12,11 @@ from shutil import copyfile
 
 from solver import Solver
 from model.deeplab_res import DeeplabRes
+from model.deeplab_digit import DeepDigits
 from model.deeplab_vgg import DeeplabVGG
 from model.discriminator import IMGDiscriminator, ResDiscriminator, VGGDiscriminator, AlexDiscriminator
 from model.classifier import Predictor
-from model.generator import Generator
+from model.generator import GeneratorDigits
 from dataset.multiloader import MultiDomainLoader
 from utils.weight_init import weight_init
 
@@ -47,6 +48,8 @@ def get_arguments():
     parser.add_argument("--Gfake_cyc", type=float, default=None, required=False,
                         help="")
     parser.add_argument("--target", type=str, default=None, required=False,
+                        help="")
+    parser.add_argument("--resume", type=str, default=None, required=False,
                         help="")
 
     return parser.parse_args()
@@ -102,10 +105,9 @@ def main(config, args):
     gpu_map = {
         'basemodel': 'cuda:0',
         'C': 'cuda:0',
-        'netDImg': 'cuda:1',
-        'netDFeat': 'cuda:1',
-        'netG': 'cuda:1',
-        'netG_2': 'cuda:1',
+        'netDImg': 'cuda:0',
+        'netDFeat': 'cuda:0',
+        'netG': 'cuda:0',
         'all_order': gpu
     }
 
@@ -119,8 +121,6 @@ def main(config, args):
     batch_size = config['train']['batch_size']
     num_domain = len(dataset)
 
-    base = config['train']['base']
-    assert base == 'VGG' or base == 'ResNet' or base == 'Alex'
     base_lr = config['train']['base_model']['lr']
     base_momentum = config['train']['base_model']['momentum']
     partial = config['train']['partial']
@@ -130,41 +130,40 @@ def main(config, args):
     G_momentum = config['train']['netG']['momentum']
     weight_decay = config['train']['weight_decay']
 
-
-    D_convdim_img = config['model']['netD']['conv_dim']['img']
-    D_repeat_img = config['model']['netD']['repeat_num']['img']
-
-    G_convdim = config['model']['netG']['conv_dim'][base]
     G_norm = config['model']['netG']['norm']
 
     # ------------------------
     # 1. Create Model
     # ------------------------
 
-    basemodel = DeeplabRes(num_classes=num_classes, partial=partial)
-    prev_feature_size = 2048
-    c1 = Predictor(num_classes=num_classes).to(gpu_map['C'])
-    c2 = Predictor(num_classes=num_classes).to(gpu_map['C'])
-
+    basemodel = DeepDigits(num_classes=num_classes)
     basemodel.to(gpu_map['basemodel'])
 
-    netDImg = IMGDiscriminator(image_size=cropped_size, conv_dim=D_convdim_img, repeat_num=D_repeat_img,
-                               channel=3, num_domain=num_domain, num_classes=num_classes)
+    c1 = Predictor(prev_feature_size=512, num_classes=num_classes).to(gpu_map['C'])
+    c2 = Predictor(prev_feature_size=512, num_classes=num_classes).to(gpu_map['C'])
 
-    netDFeat = ResDiscriminator(channel=2048, num_domain=num_domain)
+    netDImg = IMGDiscriminator(num_domain=num_domain, num_classes=num_classes)
+
+    netDFeat = ResDiscriminator(channel=512, num_domain=num_domain)
 
     netDImg.to(gpu_map['netDImg'])
     netDFeat.to(gpu_map['netDFeat'])
 
-    netG = Generator(num_filters=G_convdim, num_domain=num_domain,
-                    norm=G_norm, gpu=gpu_map['netG'], gpu2=gpu_map['netG_2'], num_classes=num_classes+1,
-                    prev_feature_size=prev_feature_size)
+    netG = GeneratorDigits(num_domain=num_domain, norm=G_norm, gpu=gpu_map['netG'],
+                           num_classes=num_classes, prev_feature_size=256)
+    netG.to(gpu_map['netG'])
 
     c1.apply(weight_init)
     c2.apply(weight_init)
     netDImg.apply(weight_init)
     netDFeat.apply(weight_init)
     netG.apply(weight_init)
+
+    if args.resume is not None:
+        checkpoint = torch.load(args.resume)
+        basemodel.load_state_dict(checkpoint['basemodel'])
+        netG.load_state_dict(checkpoint['netG'])
+        print('load {}'.format(args.resume))
 
     # ------------------------
     # 2. Create DataLoader
@@ -178,12 +177,9 @@ def main(config, args):
     # 3. Create Optimizer and Solver
     # ------------------------
 
-    optBase = optim.SGD(basemodel.optim_parameters(base_lr),
-                        momentum=base_momentum, weight_decay=weight_decay)
-    optC1 = optim.SGD(c1.parameters(),
-                      lr=base_lr, momentum=base_momentum, weight_decay=weight_decay)
-    optC2 = optim.SGD(c2.parameters(),
-                      lr=base_lr, momentum=base_momentum, weight_decay=weight_decay)
+    optBase = optim.Adam(basemodel.parameters(), lr=base_lr,weight_decay=weight_decay)
+    optC1 = optim.Adam(c1.parameters(), lr=base_lr, weight_decay=weight_decay)
+    optC2 = optim.Adam(c2.parameters(), lr=base_lr, weight_decay=weight_decay)
 
     DImg_lr = D_lr
 
@@ -197,7 +193,7 @@ def main(config, args):
     optG = optim.Adam(netG.parameters(),
                       lr=G_lr, betas=(G_momentum, 0.99), weight_decay=weight_decay)
 
-    solver = Solver(base, basemodel, c1, c2, netDImg, netDFeat, netG, loader, TargetLoader,
+    solver = Solver(basemodel, c1, c2, netDImg, netDFeat, netG, loader, TargetLoader,
                     base_lr, DImg_lr, DFeat_lr, G_lr,
                     optBase, optC1, optC2, optDImg, optDFeat, optG, config, args, gpu_map)
 

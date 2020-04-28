@@ -21,7 +21,7 @@ import time
 
 
 class Solver(object):
-    def __init__(self, base, basemodel, C1, C2, netDImg, netDFeat, netG, loader, TargetLoader,
+    def __init__(self, basemodel, C1, C2, netDImg, netDFeat, netG, loader, TargetLoader,
                  base_lr, DImg_lr, DFeat_lr, G_lr,
                  optBase, optC1, optC2, optDImg, optDFeat, optG, config, args, gpu_map):
         self.args = args
@@ -33,7 +33,6 @@ class Solver(object):
         self.snapshot_dir = os.path.join(snapshot_dir, exp_name)
         self.log_dir = os.path.join(log_dir, exp_name)
 
-        self.base = base
         self.basemodel = basemodel
         self.C1 = C1
         self.C2 = C2
@@ -68,11 +67,6 @@ class Solver(object):
         elif config['train']['GAN']['featAdv'] == 'LS':
             self.FeatAdv_loss = torch.nn.MSELoss()
 
-        if config['train']['GAN']['pixAdv'] == 'Vanila':
-            self.PixAdv_loss = torch.nn.BCEWithLogitsLoss()
-        elif config['train']['GAN']['pixAdv'] == 'LS':
-            self.PixAdv_loss = torch.nn.MSELoss()
-
         self.real_label = 0
         self.fake_label = 1
 
@@ -82,7 +76,6 @@ class Solver(object):
         self.G_lr = G_lr
         self.num_classes = config['data']['num_classes']
         self.task = self.config['data']['task']
-        self.D_size = self.config['data']['D_size']
 
         self.total_step = self.config['train']['num_steps']
         self.early_stop_step = self.config['train']['num_steps_stop']
@@ -286,7 +279,7 @@ class Solver(object):
             self.loader_iter = iter(self.loader)
             images, labels = next(self.loader_iter)
 
-        images = Variable(images)
+        images = Variable(images.to(torch.float))
         labels = Variable(labels.long())
 
         images = images.to(self.gpu0)
@@ -330,16 +323,17 @@ class Solver(object):
         self.log_loss['Dloss_AdvFeat'] = Dloss_AdvFeat.item()
         self.optDFeat.step()
 
-        fake_logit, _ = self.netDImg(trsfakeImg.detach().to(self.gpu_map['netDImg']),
-                                     self.shuffled_domain_label.to(self.gpu_map['netDImg']),
-                                     adv_training=False)
-        images_D = F.interpolate(images, size=(self.D_size, self.D_size), mode='bilinear').to(self.gpu_map['netDImg'])
-        real_logit, aux_logit = self.netDImg(images_D,
-                                             self.domain_label.to(self.gpu_map['netDImg']),
-                                             adv_training=False)
-
+        fake_logit, _, _  = self.netDImg(trsfakeImg.detach().to(self.gpu_map['netDImg']))
+        self.Dloss_fake = torch.mean(fake_logit)
+        real_logit, dcls_logit, aux_logit = self.netDImg(images.to(self.gpu_map['netDImg']))
+        self.Dloss_real = - torch.mean(real_logit)
+        self.Dloss_dcls = nn.CrossEntropyLoss()(dcls_logit, self.domain_label.to(self.gpu_map['netDImg']))
         self.Dloss_auxsem = self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
-        self.Dloss_fakereal = self._D_hingeLoss(fake_logit, real_logit)
+
+        self.Dloss_gp = self._gradient_penalty(real=images.to(self.gpu_map['netDImg']),
+                                               fake=trsfakeImg.detach().to(self.gpu_map['netDImg']),
+                                               ld=self.config['train']['GAN']['GP'])
+        self.Dloss_fakereal = self.Dloss_fake + self.Dloss_real + self.Dloss_gp
         # At this moment we don't care about semantic loss of target data
 
         self._backprop_weighted_losses(self.loss_lambda['netD'],
@@ -397,15 +391,17 @@ class Solver(object):
 
             pix_feature, _ = self.basemodel(images)
             trsfakeImg = self.netG(self.shuffled_domain_label, label_onehot, pix_feature)
-            fake_logit, aux_logit = self.netDImg(trsfakeImg.to(self.gpu_map['netDImg']),
-                                                 self.shuffled_domain_label.to(self.gpu_map['netDImg']),
-                                                 adv_training=False)
-            self.Gloss_fake = self._G_hingeLoss(fake_logit)
-            self.Gloss_cyc = torch.mean(torch.abs(images_D - idtfakeImg.to(self.gpu_map['netDImg'])))
-            self.Gloss_auxsem = self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
+            pix_feature_, _ = self.basemodel(trsfakeImg.contiguous())
+            cycfakeImg = self.netG(self.domain_label, label_onehot, pix_feature_)
+            fake_logit, dcls_logit, aux_logit = self.netDImg(trsfakeImg.to(self.gpu_map['netDImg']))
 
-            self._backprop_weighted_losses(self.loss_lambda['netG'],
-                                           retain_graph=True)
+            self.Gloss_fake = - torch.mean(fake_logit)
+            self.Gloss_cyc = torch.mean(torch.abs(images - cycfakeImg.to(self.gpu0)))
+            self.Gloss_auxsem = self._aux_semantic_loss(aux_logit.to(self.gpu0), labels)
+            self.Gloss_dcls = nn.CrossEntropyLoss()(dcls_logit,
+                                                    self.shuffled_domain_label.to(self.gpu_map['netDImg']))
+
+            self._backprop_weighted_losses(self.loss_lambda['netG'])
             self.optBase.step()
             self.optG.step()
 
@@ -450,13 +446,16 @@ class Solver(object):
 
         if (i_iter+1) % self.sample_step == 0:
             with torch.no_grad():
+                self.basemodel.eval()
+                self.netG.eval()
+
                 image_fixed = images[[i*self.batch_size for i in range(self.num_domain)]]
                 label_fixed = labels[[i*self.batch_size for i in range(self.num_domain-1)]]
                 label_fixed_onehot = torch.cat([
                     torch.eye(self.num_classes+1)[label_fixed],
                     torch.eye(self.num_classes+1)[-1].unsqueeze(0)])
 
-                image_fake_list = [F.interpolate(image_fixed, size=(self.D_size, self.D_size), mode='bilinear')]
+                image_fake_list = [image_fixed]
                 domain_fixed = self._fixed_test_domain_label(self.num_domain)
 
                 for d in domain_fixed:
@@ -470,6 +469,8 @@ class Solver(object):
                 sample_path = os.path.join(self.log_dir, '{}-FixTrsimages.jpg'.format(i_iter+1))
                 save_image(self._denorm(image_concat.data.cpu()), sample_path, nrow=self.num_domain, padding=0)
                 print('Saved real and fake images into {}...'.format(sample_path))
+                self.basemodel.train()
+                self.netG.train()
 
         if (i_iter+1) % self.save_step == 0:
             print('taking snapshot ...')
@@ -493,7 +494,7 @@ class Solver(object):
                 target_images, target_labels = next(self.target_iter)
                 val_iter += 1
 
-                target_images = Variable(target_images.detach())
+                target_images = Variable(target_images.to(torch.float).detach())
                 target_labels = Variable(target_labels.long().detach())
 
                 target_images = target_images.to(self.gpu0)
@@ -514,7 +515,6 @@ class Solver(object):
                 correct3 += pred_ensemble.eq(target_labels.data).cpu().sum()
                 size += k
 
-        print(size)
         acc1 = 100. * correct1 / size
         acc2 = 100. * correct2 / size
         acc3 = 100. * correct3 / size
@@ -531,18 +531,12 @@ class Solver(object):
     def _tsne(self, i_iter):
         # Plot t-SNE of hidden feature
         source_images1, source_labels1 = next(self.loader_iter)
-        source_images2, source_labels2 = next(self.loader_iter)
         target_images1, target_labels1 = next(self.target_iter)
-        target_images2, target_labels2 = next(self.target_iter)
         tsne_images = torch.cat([source_images1[:self.batch_size*(self.num_domain-1)],
-                                 target_images1,
-                                 source_images2[:self.batch_size*(self.num_domain-1)],
-                                 target_images2], dim=0)
+                                 target_images1], dim=0).to(torch.float)
         tsne_labels = torch.cat([source_labels1[:self.batch_size*(self.num_domain-1)],
-                                 target_labels1,
-                                 source_labels2[:self.batch_size*(self.num_domain-1)],
-                                 target_labels2], dim=0)
-        tsne_domain = torch.cat([self.domain_label, self.domain_label], dim=0)
+                                 target_labels1], dim=0)
+        tsne_domain = self.domain_label
 
         sample_path = os.path.join(self.log_dir, '{}-tSNE.jpg'.format(i_iter+1))
         _, h = self.basemodel.cpu()(tsne_images.cpu())

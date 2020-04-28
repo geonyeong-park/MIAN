@@ -93,7 +93,6 @@ class ResidualBlock(nn.Module):
 
     def forward(self, input, cls=None):
         if self.norm == 'CondBN' or self.norm == 'CondIN' or self.norm == 'BN' or self.norm == 'IN':
-            assert cls is not None
             x = self.conv1(input)
             x = self.a1(self.norm1(x, cls))
             x = self.norm2(self.conv2(x), cls)

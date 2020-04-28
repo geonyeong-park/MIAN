@@ -9,9 +9,8 @@ import numpy as np
 
 
 class ResNetMulti(nn.Module):
-    def __init__(self, num_classes, partial):
+    def __init__(self, num_classes):
         super(ResNetMulti, self).__init__()
-        self.partial = partial
 
         resnet = models.resnet50(pretrained=True)
         self.conv1 = nn.Sequential(*list(resnet.children())[:3]) # 64,112,112
@@ -59,7 +58,7 @@ class ResNetMulti(nn.Module):
     def optim_parameters(self, lr):
         return [{'params': self.get_1x_lr_params_NOscale(), 'lr': lr}]
 
-def DeeplabRes(num_classes=21, partial=False):
-    model = ResNetMulti(num_classes, partial)
+def DeeplabRes(num_classes=21):
+    model = ResNetMulti(num_classes)
     return model
 
