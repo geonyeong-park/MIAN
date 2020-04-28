@@ -14,37 +14,34 @@ class DigitMulti(nn.Module):
     def __init__(self, num_classes):
         super(DigitMulti, self).__init__()
 
+        self.pool = nn.MaxPool2d(2,2)
         self.enc = nn.Sequential(*[
-            nn.Conv2d(3, 64, 4, 2, 1),
+            nn.Conv2d(3, 64, 5, 1, 2),
             nn.BatchNorm2d(64, affine=True),
             nn.ReLU(inplace=True),
-            nn.Conv2d(64, 128, 4, 2, 1),
-            nn.BatchNorm2d(128, affine=True),
+            nn.MaxPool2d(2,2),
+            nn.Conv2d(64, 64, 5, 1, 2),
+            nn.BatchNorm2d(64, affine=True),
             nn.ReLU(inplace=True),
-            nn.Conv2d(128, 256, 4, 2, 1),
-            nn.BatchNorm2d(256, affine=True),
+            nn.MaxPool2d(2,2),
+            nn.Conv2d(64, 128, 5, 1, 2),
+            nn.BatchNorm2d(128, affine=True),
             nn.ReLU(inplace=True),
             ])
 
-        self.res = nn.Sequential(*[
-            ResidualBlock(256, 256, 5, 'BN'),
-            ResidualBlock(256, 256, 5, 'BN'),
-            ResidualBlock(256, 256, 5, 'BN'),
-            ResidualBlock(256, 256, 5, 'BN'),
-        ])
-
         self.compress = nn.Sequential(*[
-            nn.Conv2d(256, 256, 4, 2, 1),
-            nn.BatchNorm2d(256, affine=True),
+            nn.Linear(8192, 3072),
+            nn.BatchNorm1d(3072, affine=True),
             nn.ReLU(inplace=True),
-            nn.Conv2d(256, 512, 4, 2, 1),
-            nn.BatchNorm2d(512, affine=True),
+            nn.Dropout(),
+            nn.Linear(3072, 2048),
+            nn.BatchNorm1d(2048, affine=True),
             nn.ReLU(inplace=True)])
 
     def forward(self, x):
-        h = self.enc(x)
-        pix_feat = self.res(h)
-        adv_feat = self.compress(pix_feat)
+        pix_feat = self.enc(x)
+        adv_feat = self.compress(pix_feat.view(pix_feat.size(0), -1))
+        pix_feat = self.pool(pix_feat)
 
         return pix_feat, adv_feat.view(adv_feat.size(0), adv_feat.size(1))
 

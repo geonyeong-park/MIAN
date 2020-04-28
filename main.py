@@ -139,18 +139,18 @@ def main(config, args):
     basemodel = DeepDigits(num_classes=num_classes)
     basemodel.to(gpu_map['basemodel'])
 
-    c1 = Predictor(prev_feature_size=512, num_classes=num_classes).to(gpu_map['C'])
-    c2 = Predictor(prev_feature_size=512, num_classes=num_classes).to(gpu_map['C'])
+    c1 = Predictor(prev_feature_size=2048, num_classes=num_classes).to(gpu_map['C'])
+    c2 = Predictor(prev_feature_size=2048, num_classes=num_classes).to(gpu_map['C'])
 
     netDImg = IMGDiscriminator(num_domain=num_domain, num_classes=num_classes)
 
-    netDFeat = ResDiscriminator(channel=512, num_domain=num_domain)
+    netDFeat = ResDiscriminator(channel=2048, num_domain=num_domain)
 
     netDImg.to(gpu_map['netDImg'])
     netDFeat.to(gpu_map['netDFeat'])
 
     netG = GeneratorDigits(num_domain=num_domain, norm=G_norm, gpu=gpu_map['netG'],
-                           num_classes=num_classes, prev_feature_size=256)
+                           num_classes=num_classes, prev_feature_size=128)
     netG.to(gpu_map['netG'])
 
     c1.apply(weight_init)

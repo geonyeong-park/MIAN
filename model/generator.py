@@ -20,14 +20,22 @@ class GeneratorDigits(nn.Module):
         self.encode = nn.Conv2d(prev_feature_size+num_domain+num_classes+1, prev_feature_size, 1, 1)
         self.bn = nn.BatchNorm2d(prev_feature_size)
         self.relu = nn.ReLU()
+
+        self.res_wo_cond = nn.Sequential(*[
+            ResidualBlock(prev_feature_size, prev_feature_size, num_domain, 'BN'),
+            ResidualBlock(prev_feature_size, prev_feature_size, num_domain, 'BN'),
+            ResidualBlock(prev_feature_size, prev_feature_size, num_domain, 'BN'),
+            ResidualBlock(prev_feature_size, prev_feature_size, num_domain, 'BN'),
+        ]).to(gpu)
+
         self.res1 = ResidualBlock(prev_feature_size, prev_feature_size, num_domain, norm).to(gpu)
         self.res2 = ResidualBlock(prev_feature_size, prev_feature_size, num_domain, norm).to(gpu)
         self.res3 = ResidualBlock(prev_feature_size, prev_feature_size, num_domain, norm).to(gpu)
         self.res4 = ResidualBlock(prev_feature_size, prev_feature_size, num_domain, norm).to(gpu)
 
         self.dec1 = UpsamplingBlock(prev_feature_size, prev_feature_size//2, num_domain, norm).to(gpu)
-        self.dec2 = UpsamplingBlock(prev_feature_size//2, prev_feature_size//4, num_domain, norm).to(gpu)
-        self.dec3 = UpsamplingBlock(prev_feature_size//4, 3, num_domain, norm).to(gpu)
+        self.dec2 = UpsamplingBlock(prev_feature_size//2, prev_feature_size//2, num_domain, norm).to(gpu)
+        self.dec3 = UpsamplingBlock(prev_feature_size//2, 3, num_domain, norm).to(gpu)
         self.last_conv = nn.Conv2d(3, 3, 3, 1, 1).to(gpu)
 
     def _tile_label_code(self, feature, label):
@@ -47,7 +55,10 @@ class GeneratorDigits(nn.Module):
         h_l = self._tile_label_code(h, l)
         h_d_l = self._tile_domain_code(h_l, c)
 
-        res = self.relu(self.bn(self.encode(h_d_l)))
+        h = self.relu(self.bn(self.encode(h_d_l)))
+
+        res = self.res_wo_cond(h)
+
         res = self.res1(res, c)
         res = self.res2(res, c)
         res = self.res3(res, c)
