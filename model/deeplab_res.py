@@ -31,7 +31,7 @@ class ResNetMulti(nn.Module):
         h = self.avgpool(conv5)
         h = torch.flatten(h, 1)
 
-        return conv5, h
+        return h, h
 
     def get_1x_lr_params_NOscale(self):
         """

@@ -7,29 +7,45 @@ exp_setting:
 
 
 data:
-  task: 'digits'  # office, office_caltech_10, office_home, digits
-  input_size: 32
-  crop_size: 32
-  num_classes: 10 # office:31, office_caltech_10: 10, office_home: 65
-  source: ['MNIST', 'USPS', 'SYNTH', 'SVHN'] 
+  task: 'office_caltech_10'  # office, office_caltech_10, office_home, digits
   target: 'MNISTM'
-  num_domain: 5
+  input_size:
+    digits: 32
+    office_caltech_10: 256
+    office_home: 256
+  crop_size:
+    digits: 32
+    office_caltech_10: 224
+    office_home: 224
+  num_classes:
+    digits: 10
+    office_caltech_10: 10
+    office_home: 65
+  domain:
+    digits: ['MNIST', 'USPS', 'SYNTH', 'SVHN', 'MNISTM']
+    office_caltech_10: ['Amazon', 'Caltech', 'DSLR', 'Webcam']
+    office_home: ['Realworld', 'Clipart', 'Product', 'Art']
+  num_domain:
+    digits: 5
+    office_caltech_10: 4
+    office_home: 4
   num_workers: 1
 
 
 train:
   num_steps: 100000
   num_steps_stop: 50000
-  batch_size: 128
+  batch_size:
+    digits: 70
+    office_caltech_10: 32
+    office_home: 32
   partial: False
+  optimizer: 'Momentum' # Momentum, Adam
 
   base_model:
     lr: 0.0002
     momentum: 0.9
   netD:
-    lr: 0.0002
-    momentum: 0.9
-  netG:
     lr: 0.0002
     momentum: 0.9
   lr_decay_power: 0.9
@@ -38,53 +54,17 @@ train:
 
   lambda:
     base_model:
-      bloss_Clf:
-        init: 1.
-        final: 1.
-        step: 1.
-      bloss_AdvFeat:
-        init: 0.1
-        final: 0.1
-        step: 1.
-    netG:
-      Gloss_fake:
-        init: 0.02
-        final: 0.02
-        step: 1
-      Gloss_auxsem:
-        init: 0.02
-        final: 0.02
-        step: 1
-      Gloss_dcls:
-        init: 0.1
-        final: 0.1
-        step: 1
-      Gloss_cyc:
-        init: 0.1
-        final: 0.1
-        step: 1
+      bloss_Clf: 1.
+      bloss_AdvFeat: 0.1
     netD:
-      Dloss_fakereal:
-        init: 1.
-        final: 1.
-        step: 1
-      Dloss_dcls:
-        init: 10.
-        final: 10.
-        step: 1
-      Dloss_auxsem:
-        init: 10.
-        final: 10.
-        step: 1
+      Vanila:
+        D_critic: 1
+      LS:
+        D_critic: 1
+      WGAN_GP:
+        GP: 10
+        D_critic: 1
 
   GAN:
-    main: 'WGAN_GP'
-    featAdv: 'Vanila'
-    GP: 10
-    n_critic: 5
+    featAdv: 'LS'
   base: 'ResNet'  # Alex, VGG, ResNet
-
-model:
-  netG:
-    norm: 'CondBN'  # CondBN, CondIN, BN, IN
-

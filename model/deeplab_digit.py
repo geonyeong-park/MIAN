@@ -39,11 +39,11 @@ class DigitMulti(nn.Module):
             nn.ReLU(inplace=True)])
 
     def forward(self, x):
-        pix_feat = self.enc(x)
-        adv_feat = self.compress(pix_feat.view(pix_feat.size(0), -1))
-        pix_feat = self.pool(pix_feat)
+        h = self.enc(x)
+        h = h.view(h.size(0), -1)
+        adv_feat = self.compress(h)
 
-        return pix_feat, adv_feat.view(adv_feat.size(0), adv_feat.size(1))
+        return adv_feat.view(adv_feat.size(0), adv_feat.size(1)), h
 
     def get_1x_lr_params_NOscale(self):
         """
