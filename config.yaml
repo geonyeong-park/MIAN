@@ -24,13 +24,13 @@ train:
   partial: False
 
   base_model:
-    lr: 0.0001
+    lr: 0.0002
     momentum: 0.9
   netD:
-    lr: 0.0001
+    lr: 0.0002
     momentum: 0.9
   netG:
-    lr: 0.0001
+    lr: 0.0002
     momentum: 0.9
   lr_decay_power: 0.9
   weight_decay: 0.0005
