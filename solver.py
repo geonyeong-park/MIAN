@@ -112,6 +112,12 @@ class Solver(object):
         self.log_lr['C2'] = adjust_learning_rate(self.optC2, self.base_lr, i_iter, self.total_step, self.power)
         self.log_lr['DFeat'] = adjust_learning_rate(self.optDFeat, self.DFeat_lr, i_iter, self.total_step, self.power)
 
+    def _denorm(self, data):
+        N, _, H, W = data.size()
+        mean=torch.FloatTensor([0.485, 0.456, 0.406]).view(1, -1, 1, 1).repeat(N, 1, H, W)
+        std=torch.FloatTensor([0.229, 0.224, 0.225]).view(1, -1, 1, 1).repeat(N, 1, H, W)
+        return mean+data*std
+
     def _fake_domain_label(self, tensor, model):
         if type(tensor).__module__ == np.__name__:
             tensor = torch.tensor(tensor)
@@ -202,6 +208,12 @@ class Solver(object):
 
         images = Variable(images.to(torch.float))
         labels = Variable(labels.long())
+
+
+        if i_iter == 0:
+            sample_path = os.path.join(self.log_dir, '{}-image.jpg'.format(i_iter+1))
+            save_image(self._denorm(images.data.cpu()), sample_path, nrow=self.num_domain, padding=0)
+            print(labels)
 
         images = images.to(self.gpu0)
         labels = labels.to(self.gpu0)
@@ -324,6 +336,11 @@ class Solver(object):
                 target_images, target_labels = next(self.target_iter)
                 val_iter += 1
 
+                if i_iter == 0 and i == 0:
+                    sample_path = os.path.join(self.log_dir, '{}-valid.jpg'.format(i_iter+1))
+                    save_image(self._denorm(target_images.data.cpu()), sample_path, nrow=self.num_domain, padding=0)
+                    print(target_labels)
+
                 target_images = Variable(target_images.to(torch.float).detach())
                 target_labels = Variable(target_labels.long().detach())
 
@@ -362,10 +379,10 @@ class Solver(object):
         # Plot t-SNE of hidden feature
         source_images1, source_labels1 = next(self.loader_iter)
         target_images1, target_labels1 = next(self.target_iter)
-        tsne_images = torch.cat([source_images1[:self.batch_size*(self.num_domain-1)],
+        tsne_images = torch.cat([source_images1[:self.batch_size*self.num_source],
                                  target_images1], dim=0).to(torch.float)
-        tsne_labels = torch.cat([source_labels1[:self.batch_size*(self.num_domain-1)],
-                                 target_labels1], dim=0)
+        tsne_labels = torch.cat([source_labels1[:self.batch_size*self.num_source].long(),
+                                 target_labels1.long()], dim=0)
         tsne_domain = self.domain_label
 
         sample_path = os.path.join(self.log_dir, '{}-tSNE.jpg'.format(i_iter+1))

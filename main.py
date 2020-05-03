@@ -106,6 +106,7 @@ def main(config, args):
     dataset = config['data']['domain'][task]
     dataset.remove(config['data']['target'])
     dataset = dataset + [config['data']['target']]
+    print(dataset)
     num_workers = config['data']['num_workers']
     batch_size = config['train']['batch_size'][task]
     num_domain = len(dataset)
@@ -122,6 +123,7 @@ def main(config, args):
     if task == 'digits':
         basemodel = DeepDigits(num_classes=num_classes)
         prev_feature_size = 2048
+        basemodel.apply(weight_init)
     else:
         basemodel = DeeplabRes(num_classes=num_classes)
         prev_feature_size = 2048
@@ -162,9 +164,9 @@ def main(config, args):
         optC2 = optim.SGD(c2.parameters(), lr=base_lr, momentum=base_momentum, weight_decay=weight_decay)
         optDFeat = optim.SGD(netDFeat.parameters(), lr=DFeat_lr, momentum=D_momentum, weight_decay=weight_decay)
     elif config['train']['optimizer'] == 'Adam':
-        optBase = optim.Adam(basemodel.parameters(), lr=base_lr, betas=(D_momentum, 0.99), weight_decay=weight_decay)
-        optC1 = optim.Adam(c1.parameters(), lr=base_lr, betas=(D_momentum, 0.99), weight_decay=weight_decay)
-        optC2 = optim.Adam(c2.parameters(), lr=base_lr, betas=(D_momentum, 0.99), weight_decay=weight_decay)
+        optBase = optim.Adam(basemodel.parameters(), lr=base_lr, betas=(base_momentum, 0.99), weight_decay=weight_decay)
+        optC1 = optim.Adam(c1.parameters(), lr=base_lr, betas=(base_momentum, 0.99), weight_decay=weight_decay)
+        optC2 = optim.Adam(c2.parameters(), lr=base_lr, betas=(base_momentum, 0.99), weight_decay=weight_decay)
         optDFeat = optim.Adam(netDFeat.parameters(), lr=DFeat_lr, betas=(D_momentum, 0.99), weight_decay=weight_decay)
 
 

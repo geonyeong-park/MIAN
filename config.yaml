@@ -8,7 +8,7 @@ exp_setting:
 
 data:
   task: 'office_caltech_10'  # office, office_caltech_10, office_home, digits
-  target: 'MNISTM'
+  target: 'Amazon'
   input_size:
     digits: 32
     office_caltech_10: 256
@@ -33,10 +33,10 @@ data:
 
 
 train:
-  num_steps: 100000
+  num_steps: 50000
   num_steps_stop: 50000
   batch_size:
-    digits: 70
+    digits: 128
     office_caltech_10: 32
     office_home: 32
   partial: False
@@ -55,7 +55,7 @@ train:
   lambda:
     base_model:
       bloss_Clf: 1.
-      bloss_AdvFeat: 0.1
+      bloss_AdvFeat: 1
     netD:
       Vanila:
         D_critic: 1

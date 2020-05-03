@@ -29,11 +29,12 @@ class DigitMulti(nn.Module):
             nn.ReLU(inplace=True),
             ])
 
-        self.compress = nn.Sequential(*[
+        self.compress1 = nn.Sequential(*[
             nn.Linear(8192, 3072),
             nn.BatchNorm1d(3072, affine=True),
             nn.ReLU(inplace=True),
-            nn.Dropout(),
+            nn.Dropout()])
+        self.compress2 = nn.Sequential(*[
             nn.Linear(3072, 2048),
             nn.BatchNorm1d(2048, affine=True),
             nn.ReLU(inplace=True)])
@@ -41,7 +42,8 @@ class DigitMulti(nn.Module):
     def forward(self, x):
         h = self.enc(x)
         h = h.view(h.size(0), -1)
-        adv_feat = self.compress(h)
+        h = self.compress1(h)
+        adv_feat = self.compress2(h)
 
         return adv_feat.view(adv_feat.size(0), adv_feat.size(1)), h
 
