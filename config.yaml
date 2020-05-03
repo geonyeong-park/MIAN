@@ -66,5 +66,5 @@ train:
         D_critic: 1
 
   GAN:
-    featAdv: 'LS'
+    featAdv: 'Vanila'
   base: 'ResNet'  # Alex, VGG, ResNet
