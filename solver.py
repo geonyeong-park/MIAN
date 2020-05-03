@@ -121,17 +121,17 @@ class Solver(object):
     def _fake_domain_label(self, tensor, model):
         if type(tensor).__module__ == np.__name__:
             tensor = torch.tensor(tensor)
-        ones = torch.ones_like(tensor, dtype=torch.long)
+        ones = torch.ones_like(tensor, dtype=torch.float)
         for i in range(self.num_domain):
-            ones[self.batch_size*i: self.batch_size*(i+1), i] = 0
+            ones[self.batch_size*i: self.batch_size*(i+1), i] = 0.
         return ones.to(self.gpu_map['netD{}'.format(model)])
 
     def _real_domain_label(self, tensor, model):
         if type(tensor).__module__ == np.__name__:
             tensor = torch.tensor(tensor)
-        zeros = torch.zeros_like(tensor, dtype=torch.long)
+        zeros = torch.zeros_like(tensor, dtype=torch.float)
         for i in range(self.num_domain):
-            zeros[self.batch_size*i: self.batch_size*(i+1), i] = 1
+            zeros[self.batch_size*i: self.batch_size*(i+1), i] = 1.
         return zeros.to(self.gpu_map['netD{}'.format(model)])
 
     def _gradient_penalty(self, real, fake, ld):
@@ -229,7 +229,7 @@ class Solver(object):
         DFeatlogit = self.netDFeat(adv_feature.detach().to(self.gpu_map['netDFeat']))
 
         if self.featAdv_algorithm == 'Vanila':
-            Dloss_AdvFeat = nn.CrossEntropyLoss()(DFeatlogit,
+            Dloss_AdvFeat = nn.BCEWithLogitsLoss()(DFeatlogit,
                                                   self._real_domain_label(DFeatlogit, 'Feat'))
         elif self.featAdv_algorithm == 'LS':
             Dloss_AdvFeat = nn.MSELoss()(DFeatlogit,
@@ -273,7 +273,7 @@ class Solver(object):
         DFeatlogit = self.netDFeat(adv_feature.to(self.gpu_map['netDFeat']))
 
         if self.featAdv_algorithm == 'Vanila':
-            bloss_AdvFeat = nn.CrossEntropyLoss()(DFeatlogit,
+            bloss_AdvFeat = nn.BCEWithLogitsLoss()(DFeatlogit,
                                                   self._fake_domain_label(DFeatlogit, 'Feat'))
         elif self.featAdv_algorithm == 'LS':
             bloss_AdvFeat = nn.MSELoss()(DFeatlogit,
