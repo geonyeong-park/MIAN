@@ -45,7 +45,7 @@ def get_arguments():
                         help="")
     parser.add_argument("--optimizer", type=str, default=None, required=False,
                         help="")
-    parser.add_argument("--resume", type=str, default=None, required=False,
+    parser.add_argument("--resume", type=str, default=None, required=False, help="")
 
     return parser.parse_args()
 

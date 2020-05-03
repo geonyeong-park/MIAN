@@ -84,8 +84,6 @@ class Solver(object):
         # Broadcast parameters and optimizer state for every processes
 
         self.start_time = time.time()
-        self.iba.estimate(self.basemodel, self.loader, self.domain_label, device=self.gpu0, n_samples=1, progbar=False)
-        self.optBottleneck = torch.optim.Adam(lr=1e-5, params=self.iba.parameters())
 
         for i_iter in range(self.total_step):
             self.basemodel.train()
@@ -99,7 +97,6 @@ class Solver(object):
                 self.C1.eval()
                 self.C2.eval()
                 self._validation(i_iter)
-                self.iba.estimate(self.basemodel, self.loader, self.domain_label, device=self.gpu0, n_samples=1, progbar=False)
 
             if (i_iter+1) % self.tsne_step == 0:
                 self._tsne(i_iter)
@@ -124,17 +121,17 @@ class Solver(object):
     def _fake_domain_label(self, tensor, model):
         if type(tensor).__module__ == np.__name__:
             tensor = torch.tensor(tensor)
-        ones = torch.ones_like(tensor, dtype=torch.float)
+        ones = torch.ones_like(tensor, dtype=torch.long)
         for i in range(self.num_domain):
-            ones[self.batch_size*i: self.batch_size*(i+1), i] = 0.
+            ones[self.batch_size*i: self.batch_size*(i+1), i] = 0
         return ones.to(self.gpu_map['netD{}'.format(model)])
 
     def _real_domain_label(self, tensor, model):
         if type(tensor).__module__ == np.__name__:
             tensor = torch.tensor(tensor)
-        zeros = torch.zeros_like(tensor, dtype=torch.float)
+        zeros = torch.zeros_like(tensor, dtype=torch.long)
         for i in range(self.num_domain):
-            zeros[self.batch_size*i: self.batch_size*(i+1), i] = 1.
+            zeros[self.batch_size*i: self.batch_size*(i+1), i] = 1
         return zeros.to(self.gpu_map['netD{}'.format(model)])
 
     def _gradient_penalty(self, real, fake, ld):
@@ -212,12 +209,6 @@ class Solver(object):
         images = Variable(images.to(torch.float))
         labels = Variable(labels.long())
 
-
-        if i_iter == 0:
-            sample_path = os.path.join(self.log_dir, '{}-image.jpg'.format(i_iter+1))
-            save_image(self._denorm(images.data.cpu()), sample_path, nrow=self.num_domain, padding=0)
-            print(labels)
-
         images = images.to(self.gpu0)
         labels = labels.to(self.gpu0)
 
@@ -278,18 +269,6 @@ class Solver(object):
             self.optBase.step()
             self._zero_grad()
 
-        # -------------------------
-        # Information Bottleneck
-        # -------------------------
-        with self.iba.restrict_flow():
-            _, h = self.basemodel(images, self.domain_label.to(self.gpu0))
-            info_loss = self.iba.capacity().mean() * 10.
-            info_loss.backward()
-            self.log_loss['bloss_info'] = info_loss.item()
-            self.optBase.step()
-            self.optBottleneck.step()
-        # -------------------------
-
         adv_feature, _ = self.basemodel(images)
         DFeatlogit = self.netDFeat(adv_feature.to(self.gpu_map['netDFeat']))
 
@@ -348,11 +327,6 @@ class Solver(object):
                 # To be modified
                 target_images, target_labels = next(self.target_iter)
                 val_iter += 1
-
-                if i_iter == 0 and i == 0:
-                    sample_path = os.path.join(self.log_dir, '{}-valid.jpg'.format(i_iter+1))
-                    save_image(self._denorm(target_images.data.cpu()), sample_path, nrow=self.num_domain, padding=0)
-                    print(target_labels)
 
                 target_images = Variable(target_images.to(torch.float).detach())
                 target_labels = Variable(target_labels.long().detach())
