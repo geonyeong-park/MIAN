@@ -21,15 +21,12 @@ class ResNetMulti(nn.Module):
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
 
-    def forward(self, x, d):
-        d = torch.eye(self.num_domain)[d.to(torch.long)]
-        domain_code = d.view(-1, self.num_domain, 1, 1).repeat(1, 1, 7, 7)
-
+    def forward(self, x):
         conv1 = self.conv1(x)
         conv2 = self.conv2(conv1)
         conv3 = self.conv3(conv2)
         conv4 = self.conv4(conv3)
-        conv5 = self.conv5(conv4, domain_code)
+        conv5 = self.conv5(conv4)
 
         h = self.avgpool(conv5)
         h = torch.flatten(h, 1)
