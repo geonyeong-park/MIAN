@@ -72,11 +72,6 @@ def main(config, args):
         print('featAdv: ', p)
         assert p == 'LS' or p == 'Vanila'
         config['train']['GAN']['featAdv'] = p
-    if args.optimizer is not None:
-        o = args.optimizer
-        print('optimizer: ', o)
-        assert o == 'Momentum' or o == 'Adam'
-        config['train']['optimizer'] = o
     if args.target is not None:
         t = args.target
         print('target: ', t)
@@ -85,6 +80,12 @@ def main(config, args):
         t = args.task
         print('task: ', t)
         config['data']['task'] = t
+    if args.optimizer is not None:
+        o = args.optimizer
+        print('optimizer: ', o)
+        assert o == 'Momentum' or o == 'Adam'
+        assert args.task is not None
+        config['train']['optimizer'][args.task] = o
 
     # -------------------------------
 
@@ -110,10 +111,10 @@ def main(config, args):
     batch_size = config['train']['batch_size'][task]
     num_domain = len(dataset)
 
-    base_lr = config['train']['base_model']['lr']
-    base_momentum = config['train']['base_model']['momentum']
-    D_lr = config['train']['netD']['lr']
-    D_momentum = config['train']['netD']['momentum']
+    base_lr = config['train']['base_model'][task]['lr']
+    base_momentum = config['train']['base_model'][task]['momentum']
+    D_lr = config['train']['netD'][task]['lr']
+    D_momentum = config['train']['netD'][task]['momentum']
     weight_decay = config['train']['weight_decay']
 
     # ------------------------
@@ -157,13 +158,13 @@ def main(config, args):
     # ------------------------
     DFeat_lr = D_lr
 
-    if config['train']['optimizer'] == 'Momentum':
+    if config['train']['optimizer'][task] == 'Momentum':
         print('Setting SGD Optimizer')
         optBase = optim.SGD(basemodel.parameters(), lr=base_lr, momentum=base_momentum, weight_decay=weight_decay)
         optC1 = optim.SGD(c1.parameters(), lr=base_lr, momentum=base_momentum, weight_decay=weight_decay)
         optC2 = optim.SGD(c2.parameters(), lr=base_lr, momentum=base_momentum, weight_decay=weight_decay)
         optDFeat = optim.SGD(netDFeat.parameters(), lr=DFeat_lr, momentum=D_momentum, weight_decay=weight_decay)
-    elif config['train']['optimizer'] == 'Adam':
+    elif config['train']['optimizer'][task] == 'Adam':
         print('Setting Adam Optimizer')
         optBase = optim.Adam(basemodel.parameters(), lr=base_lr, betas=(base_momentum, 0.99), weight_decay=weight_decay)
         optC1 = optim.Adam(c1.parameters(), lr=base_lr, betas=(base_momentum, 0.99), weight_decay=weight_decay)

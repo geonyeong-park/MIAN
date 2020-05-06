@@ -68,7 +68,7 @@ class Solver(object):
 
         self.total_step = self.config['train']['num_steps']
         self.early_stop_step = self.config['train']['num_steps_stop']
-        self.power = self.config['train']['lr_decay_power']
+        self.power = self.config['train']['lr_decay_power'][task]
 
         self.log_loss = {}
         self.log_lr = {}
