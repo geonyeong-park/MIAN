@@ -158,11 +158,13 @@ def main(config, args):
     DFeat_lr = D_lr
 
     if config['train']['optimizer'] == 'Momentum':
+        print('Setting SGD Optimizer')
         optBase = optim.SGD(basemodel.parameters(), lr=base_lr, momentum=base_momentum, weight_decay=weight_decay)
         optC1 = optim.SGD(c1.parameters(), lr=base_lr, momentum=base_momentum, weight_decay=weight_decay)
         optC2 = optim.SGD(c2.parameters(), lr=base_lr, momentum=base_momentum, weight_decay=weight_decay)
         optDFeat = optim.SGD(netDFeat.parameters(), lr=DFeat_lr, momentum=D_momentum, weight_decay=weight_decay)
     elif config['train']['optimizer'] == 'Adam':
+        print('Setting Adam Optimizer')
         optBase = optim.Adam(basemodel.parameters(), lr=base_lr, betas=(base_momentum, 0.99), weight_decay=weight_decay)
         optC1 = optim.Adam(c1.parameters(), lr=base_lr, betas=(base_momentum, 0.99), weight_decay=weight_decay)
         optC2 = optim.Adam(c2.parameters(), lr=base_lr, betas=(base_momentum, 0.99), weight_decay=weight_decay)

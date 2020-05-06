@@ -278,7 +278,7 @@ class Solver(object):
         elif self.featAdv_algorithm == 'LS':
             bloss_AdvFeat = nn.MSELoss()(DFeatlogit,
                                          self._fake_domain_label(DFeatlogit, 'Feat'))
-        #bloss_AdvFeat *= self.FeatAdv_coeff
+        bloss_AdvFeat *= self.FeatAdv_coeff
         bloss_AdvFeat.backward()
         self.optBase.step()
 
