@@ -37,8 +37,8 @@ def get_arguments():
     # Test arguments
     parser.add_argument("--advcoeff", type=float, default=None, required=False,
                         help="")
-    parser.add_argument("--featAdv", type=str, default=None, required=False,
-                        help="")
+    parser.add_argument("--no_MCD", default=True, required=False,
+                        action='store_false', help="")
     parser.add_argument("--target", type=str, default=None, required=False,
                         help="")
     parser.add_argument("--task", type=str, default=None, required=False,
@@ -67,11 +67,9 @@ def main(config, args):
         c = args.advcoeff
         print('advcoeff: ', c)
         config['train']['lambda']['base_model']['bloss_AdvFeat'] = c
-    if args.featAdv is not None:
-        p = args.featAdv
-        print('featAdv: ', p)
-        assert p == 'LS' or p == 'Vanila'
-        config['train']['GAN']['featAdv'] = p
+    if args.no_MCD is not None:
+        no_MCD = args.no_MCD
+        print('MCD: ', no_MCD)
     if args.target is not None:
         t = args.target
         print('target: ', t)
@@ -173,7 +171,7 @@ def main(config, args):
 
 
     solver = Solver(basemodel, c1, c2, netDFeat, loader, TargetLoader,
-                    base_lr, DFeat_lr, task, num_domain,
+                    base_lr, DFeat_lr, task, num_domain, no_MCD,
                     optBase, optC1, optC2, optDFeat, config, args, gpu_map)
     # ------------------------
     # 4. Train

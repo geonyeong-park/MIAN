@@ -22,7 +22,7 @@ import time
 
 class Solver(object):
     def __init__(self, basemodel, C1, C2, netDFeat, loader, TargetLoader,
-                 base_lr, DFeat_lr, task, num_domain,
+                 base_lr, DFeat_lr, task, num_domain, MCD,
                  optBase, optC1, optC2, optDFeat, config, args, gpu_map):
         self.args = args
         self.config = config
@@ -50,6 +50,7 @@ class Solver(object):
         self.target_iter = iter(TargetLoader)
         self.num_domain = num_domain
         self.num_source = self.num_domain-1
+        self.MCD = MCD
         self.batch_size = config['train']['batch_size'][task]
 
         self.domain_label = torch.zeros(self.num_domain*self.batch_size, dtype=torch.long)
@@ -249,24 +250,34 @@ class Solver(object):
         # ----------------------------
         # Maximum Classifier Discrepancy
         # ----------------------------
-        loss_s, _ = self._maximum_classifier_discrepancy(images, labels)
-        loss_s.backward()
-        self.optBase.step()
-        self.optC1.step()
-        self.optC2.step()
-        self._zero_grad()
-
-        loss_s, loss_dis = self._maximum_classifier_discrepancy(images, labels)
-        loss = loss_s - loss_dis
-        loss.backward()
-        self.optC1.step()
-        self.optC2.step()
-        self._zero_grad()
-
-        for i in range(4):
-            _, loss_dis = self._maximum_classifier_discrepancy(images, labels)
-            loss_dis.backward()
+        if self.MCD:
+            loss_s, _ = self._maximum_classifier_discrepancy(images, labels)
+            loss_s.backward()
             self.optBase.step()
+            self.optC1.step()
+            self.optC2.step()
+            self._zero_grad()
+
+            loss_s, loss_dis = self._maximum_classifier_discrepancy(images, labels)
+            loss = loss_s - loss_dis
+            loss.backward()
+            self.optC1.step()
+            self.optC2.step()
+            self._zero_grad()
+
+            for i in range(4):
+                _, loss_dis = self._maximum_classifier_discrepancy(images, labels)
+                loss_dis.backward()
+                self.optBase.step()
+                self._zero_grad()
+        else:
+            h, _ = self.basemodel(images)
+            C1_feat = self.C1(h)
+            output_s1 = C1_feat[:self.batch_size*(self.num_domain-1)]
+            loss_s1 = nn.CrossEntropyLoss()(output_s1, labels)
+            loss_s1.backward()
+            self.optBase.step()
+            self.optC1.step()
             self._zero_grad()
 
         adv_feature, _ = self.basemodel(images)
