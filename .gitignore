@@ -1,6 +1,7 @@
 *.pyc
 *.pth
 *.png
+.sh
 *.jpg
 log/
 snapshots/
