@@ -17,7 +17,7 @@ done
 
 END
 
-domain=("Amazon" "Caltech" "DSLR" "Webcam")
+domain=("Caltech" "Amazon" "DSLR" "Webcam")
 lambda=(1. 1.2 0.8 1.6 0.6)
 
 for ((i=0;i<=3;i++))
@@ -25,7 +25,7 @@ do
     for ld in "${lambda[@]}"; do
         for target in "${domain[@]}"; do
             python3 main.py --gpu $1 --task 'office_caltech_10' --optimizer 'Momentum' --target $target \
-                --exp_name "office_"${target}"_ld_"${ld}"_seed_"${i}"" --advcoeff $ld
+                --exp_name "office_DAdam_"${target}"_ld_"${ld}"_seed_"${i}"" --advcoeff $ld
         done
     done
 done
