@@ -34,7 +34,7 @@ data:
 
 train:
   num_steps: 100000
-  num_steps_stop: 50000
+  num_steps_stop: 25000
   batch_size:
     digits: 128
     office_caltech_10: 16
