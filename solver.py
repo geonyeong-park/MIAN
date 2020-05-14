@@ -94,10 +94,18 @@ class Solver(object):
             self.C1.train()
             self.C2.train()
             self.netDFeat.train()
+<<<<<<< 2b4784aa5663325d01434f29dba2199e9269963b
 
             #p = float(i_iter) / self.config['train']['num_steps_stop']
             #self.FeatAdv_coeff = 2. / (1. + np.exp(-10. * p)) - 1
 
+||||||| merged common ancestors
+=======
+
+            #p = float(i_iter) / self.config['train']['num_steps_stop']
+            #self.FeatAdv_coeff = 2. / (1. + np.exp(-6. * p)) - 1
+
+>>>>>>> testing with Adam opt
             self._train_step(i_iter)
 
             if (i_iter+1) % self.val_step == 0:
@@ -246,7 +254,6 @@ class Solver(object):
         Dloss_AdvFeat.backward()
         self.log_loss['Dloss_AdvFeat'] = Dloss_AdvFeat.item()
         self.optDFeat.step()
-
         # ----------------------------
         # 4. Train Basemodel
         # ----------------------------
@@ -288,6 +295,7 @@ class Solver(object):
             self.optC1.step()
             self._zero_grad()
 
+<<<<<<< 2b4784aa5663325d01434f29dba2199e9269963b
         adv_feature, _ = self.basemodel(images)
 
         # ----------------------------
@@ -305,6 +313,10 @@ class Solver(object):
 
         # ----------------------------
 
+||||||| merged common ancestors
+        """
+=======
+>>>>>>> testing with Adam opt
         adv_feature, _ = self.basemodel(images)
         DFeatlogit = self.netDFeat(adv_feature.to(self.gpu_map['netDFeat']))
 
