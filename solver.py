@@ -318,8 +318,6 @@ class Solver(object):
         bloss_AdvFeat *= self.FeatAdv_coeff
         bloss_AdvFeat.backward()
         self.optBase.step()
-        self._zero_grad()
-
         # -----------------------------------------------
         # -----------------------------------------------
 

@@ -17,15 +17,12 @@ done
 
 END
 
-domain=("MNIST" "MNISTM" "SVHN" "SYNTH" "USPS")
-lambda=(1. 1.2 0.8 1.6 0.6)
+domain=("Amazon" "Caltech" "DSLR" "Webcam")
 
-for ((i=0;i<=3;i++))
-do
-    for ld in "${lambda[@]}"; do
-        for target in "${domain[@]}"; do
-            python3 main.py --gpu $1 --task 'digits' --target $target \
-                --exp_name "digits_"${target}"_ld_"${ld}"_seed_"${i}"" --advcoeff $ld
-        done
+for ((i=0;i<=3;i++)); do
+    for target in "${domain[@]}"; do
+        python3 main.py --gpu $1 --task 'office_caltech_10' --target $target \
+            --exp_name "office_0.05_"${target}"_seed_"${i}"" --advcoeff 0.05 
     done
 done
+
