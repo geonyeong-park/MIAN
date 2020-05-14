@@ -42,8 +42,8 @@ train:
   partial: False
   optimizer: 
     digits: 'Adam' 
-    office_caltech_10: 'Momentum' 
-    office_home: 'Momentum' 
+    office_caltech_10: 'Adam' 
+    office_home: 'Adam' 
 
   base_model:
     digits:

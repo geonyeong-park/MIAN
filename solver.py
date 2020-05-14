@@ -91,6 +91,10 @@ class Solver(object):
             self.C1.train()
             self.C2.train()
             self.netDFeat.train()
+
+            #p = float(i_iter) / self.config['train']['num_steps_stop']
+            #self.FeatAdv_coeff = 2. / (1. + np.exp(-10. * p)) - 1
+
             self._train_step(i_iter)
 
             if (i_iter+1) % self.val_step == 0:
