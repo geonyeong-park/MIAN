@@ -44,6 +44,8 @@ train:
     digits: 'Adam' 
     office_caltech_10: 'Adam' 
     office_home: 'Adam' 
+  SVD_k: 3
+  SVD_ld: 0.0001
 
   base_model:
     digits:

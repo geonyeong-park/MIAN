@@ -18,6 +18,7 @@ import horovod.torch as hvd
 import math
 import warnings
 import time
+from model.SVD import SVD_entropy
 
 
 class Solver(object):
@@ -66,6 +67,8 @@ class Solver(object):
         self.DFeat_lr = DFeat_lr
         self.FeatAdv_coeff = config['train']['lambda']['base_model']['bloss_AdvFeat']
         self.num_classes = config['data']['num_classes'][task]
+        self.SVD_k = config['train']['SVD_k']
+        self.SVD_ld = config['train']['SVD_ld']
 
         self.total_step = self.config['train']['num_steps']
         self.early_stop_step = self.config['train']['num_steps_stop']
@@ -257,6 +260,7 @@ class Solver(object):
         if self.MCD:
             loss_s, _ = self._maximum_classifier_discrepancy(images, labels)
             loss_s.backward()
+            self.log_loss['loss_cen'] = loss_s.item()
             self.optBase.step()
             self.optC1.step()
             self.optC2.step()
@@ -285,6 +289,23 @@ class Solver(object):
             self._zero_grad()
 
         adv_feature, _ = self.basemodel(images)
+
+        # ----------------------------
+        # SVD Entropy regularization
+        # ----------------------------
+        SVD_en = Variable(torch.tensor(0.), requires_grad=True).to(self.gpu0)
+        for d in range(self.num_domain):
+            d_feature = adv_feature[d*self.batch_size: (d+1)*self.batch_size]
+            en_transfer_d, _ = SVD_entropy(d_feature, self.SVD_k)
+            SVD_en += self.SVD_ld * (en_transfer_d)
+        SVD_en.backward()
+        self.log_loss['en_transfer_d'] = en_transfer_d.item()
+        self.optBase.step()
+        self._zero_grad()
+
+        # ----------------------------
+
+        adv_feature, _ = self.basemodel(images)
         DFeatlogit = self.netDFeat(adv_feature.to(self.gpu_map['netDFeat']))
 
         if self.featAdv_algorithm == 'Vanila':
@@ -293,9 +314,11 @@ class Solver(object):
         elif self.featAdv_algorithm == 'LS':
             bloss_AdvFeat = nn.MSELoss()(DFeatlogit,
                                          self._fake_domain_label(DFeatlogit, 'Feat'))
+        self.log_loss['bloss_AdvFeat'] = bloss_AdvFeat.item()
         bloss_AdvFeat *= self.FeatAdv_coeff
         bloss_AdvFeat.backward()
         self.optBase.step()
+        self._zero_grad()
 
         # -----------------------------------------------
         # -----------------------------------------------
@@ -305,7 +328,7 @@ class Solver(object):
             et = str(datetime.timedelta(seconds=et))[:-7]
             log = "Elapsed [{}], Iteration [{}/{}]\n".format(et, i_iter+1, self.early_stop_step)
             for tag, value in self.log_loss.items():
-                log += ", {}: {:.4f}".format(tag, value)
+                log += "{}: {:.4f}, ".format(tag, value)
             h, _ = self.basemodel(images)
             pred = self.C1(h)
             source_pd = pred.detach().data[:self.batch_size*self.num_source].max(1)[1].cpu().numpy()
