@@ -45,6 +45,8 @@ def get_arguments():
                         help="")
     parser.add_argument("--optimizer", type=str, default=None, required=False,
                         help="")
+    parser.add_argument("--SVD_ld", type=float, default=None, required=False,
+                        help="")
     parser.add_argument("--resume", type=str, default=None, required=False, help="")
 
     return parser.parse_args()
@@ -78,6 +80,12 @@ def main(config, args):
         t = args.task
         print('task: ', t)
         config['data']['task'] = t
+    if args.SVD_ld is not None:
+        s = args.SVD_ld
+        print('SVD_en lambda: ', s)
+        config['train']['SVD_ld'] = s
+
+
     if args.optimizer is not None:
         o = args.optimizer
         print('optimizer: ', o)
@@ -159,9 +167,9 @@ def main(config, args):
     if config['train']['optimizer'][task] == 'Momentum':
         print('Setting SGD Optimizer')
         optBase = optim.SGD(basemodel.parameters(), lr=base_lr, momentum=base_momentum, weight_decay=weight_decay)
-        optC1 = optim.SGD(c1.parameters(), lr=base_lr, momentum=base_momentum, weight_decay=weight_decay)
-        optC2 = optim.SGD(c2.parameters(), lr=base_lr, momentum=base_momentum, weight_decay=weight_decay)
-        optDFeat = optim.Adam(netDFeat.parameters(), lr=DFeat_lr, betas=(D_momentum, 0.99), weight_decay=weight_decay)
+        optC1 = optim.SGD(c1.parameters(), lr=10*base_lr, momentum=base_momentum, weight_decay=weight_decay)
+        optC2 = optim.SGD(c2.parameters(), lr=10*base_lr, momentum=base_momentum, weight_decay=weight_decay)
+        optDFeat = optim.SGD(netDFeat.parameters(), lr=DFeat_lr, momentum=D_momentum, weight_decay=weight_decay)
     elif config['train']['optimizer'][task] == 'Adam':
         print('Setting Adam Optimizer')
         optBase = optim.Adam(basemodel.parameters(), lr=base_lr, betas=(base_momentum, 0.99), weight_decay=weight_decay)

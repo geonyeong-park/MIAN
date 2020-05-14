@@ -11,22 +11,27 @@ data:
   target: 'Amazon'
   input_size:
     digits: 32
+    office: 256
     office_caltech_10: 256
     office_home: 256
   crop_size:
     digits: 32
+    office: 224
     office_caltech_10: 224
     office_home: 224
   num_classes:
     digits: 10
+    office: 31
     office_caltech_10: 10
     office_home: 65
   domain:
     digits: ['MNIST', 'USPS', 'SYNTH', 'SVHN', 'MNISTM']
+    office: ['Amazon', 'DSLR', 'Webcam']
     office_caltech_10: ['Amazon', 'Caltech', 'DSLR', 'Webcam']
     office_home: ['Realworld', 'Clipart', 'Product', 'Art']
   num_domain:
     digits: 5
+    office: 3
     office_caltech_10: 4
     office_home: 4
   num_workers: 1
@@ -37,13 +42,15 @@ train:
   num_steps_stop: 25000
   batch_size:
     digits: 128
+    office: 16
     office_caltech_10: 16
     office_home: 16
   partial: False
   optimizer: 
     digits: 'Adam' 
-    office_caltech_10: 'Adam' 
-    office_home: 'Adam' 
+    office: 'Momentum' 
+    office_caltech_10: 'Momentum' 
+    office_home: 'Momentum' 
   SVD_k: 3
   SVD_ld: 0.0001
 
@@ -51,24 +58,31 @@ train:
     digits:
       lr: 0.0002
       momentum: 0.9
+    office:
+      lr: 0.001
+      momentum: 0.9
     office_caltech_10:
-      lr: 0.0001
+      lr: 0.001
       momentum: 0.9
     office_home:
-      lr: 0.0001
+      lr: 0.001
       momentum: 0.9
   netD:
     digits:
       lr: 0.0002
       momentum: 0.9
+    office:
+      lr: 0.001
+      momentum: 0.9
     office_caltech_10:
-      lr: 0.0001
+      lr: 0.001
       momentum: 0.9
     office_home:
-      lr: 0.0001
+      lr: 0.001
       momentum: 0.9
   lr_decay_power:
     digits: 0.9
+    office: 0.9
     office_caltech_10: 0.9
     office_home: 0.9
   weight_decay: 0.0005

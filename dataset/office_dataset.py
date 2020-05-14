@@ -36,10 +36,10 @@ class AmazonDataSet(data.Dataset):
                 image_transform = [torchvision.transforms.Resize(self.resize, interpolation=Image.BICUBIC),
                                    torchvision.transforms.RandomCrop(self.cropsize)] + base_transform
             else:
-                image_transform = [torchvision.transforms.Resize(self.cropsize, interpolation=Image.BICUBIC)] + base_transform
+                image_transform = [torchvision.transforms.Resize((self.cropsize,self.cropsize), interpolation=Image.BICUBIC)] + base_transform
 
         elif split == 'val':
-            image_transform = [torchvision.transforms.Resize(self.cropsize, interpolation=Image.BICUBIC)] + base_transform
+            image_transform = [torchvision.transforms.Resize((self.cropsize,self.cropsize), interpolation=Image.BICUBIC)] + base_transform
 
         self.image_transform = torchvision.transforms.Compose(image_transform)
 
@@ -54,11 +54,6 @@ class AmazonDataSet(data.Dataset):
         image = self.image_transform(image)
         label = torch.from_numpy(np.array(label, np.int32, copy=False))
         return image, label
-
-
-class CaltechDataSet(AmazonDataSet):
-    def __init__(self, root, list_path=None, base_transform=None, resize=300, cropsize=256, split='train'):
-        super(CaltechDataSet, self).__init__(root, list_path, base_transform, resize, cropsize, split)
 
 
 class DSLRDataSet(AmazonDataSet):

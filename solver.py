@@ -116,9 +116,9 @@ class Solver(object):
 
     def _adjust_lr_opts(self, i_iter):
         self.log_lr['base'] = adjust_learning_rate(self.optBase, self.base_lr, i_iter, self.total_step, self.power)
-        self.log_lr['C1'] = adjust_learning_rate(self.optC1, self.base_lr, i_iter, self.total_step, self.power)
-        self.log_lr['C2'] = adjust_learning_rate(self.optC2, self.base_lr, i_iter, self.total_step, self.power)
-        self.log_lr['DFeat'] = adjust_learning_rate(self.optDFeat, self.DFeat_lr, i_iter, self.total_step, self.power)
+        self.log_lr['C1'] = adjust_learning_rate(self.optC1, 10*self.base_lr, i_iter, self.total_step, self.power)
+        self.log_lr['C2'] = adjust_learning_rate(self.optC2, 10*self.base_lr, i_iter, self.total_step, self.power)
+        self.log_lr['DFeat'] = adjust_learning_rate(self.optDFeat, 10*self.DFeat_lr, i_iter, self.total_step, self.power)
 
     def _denorm(self, data):
         N, _, H, W = data.size()
