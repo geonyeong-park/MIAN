@@ -20,6 +20,7 @@ class ResNetMulti(nn.Module):
         self.conv5 = nn.Sequential(*list(resnet.children())[7])
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.bottleneck = nn.Conv2d(2048, 256, 3, 1, 1)
 
     def forward(self, x):
         conv1 = self.conv1(x)
@@ -27,6 +28,7 @@ class ResNetMulti(nn.Module):
         conv3 = self.conv3(conv2)
         conv4 = self.conv4(conv3)
         conv5 = self.conv5(conv4)
+        conv5 = self.bottleneck(conv5)
 
         h = self.avgpool(conv5)
         h = torch.flatten(h, 1)
@@ -55,8 +57,27 @@ class ResNetMulti(nn.Module):
                     if k.requires_grad:
                         yield k
 
+    def get_10x_lr_params_NOscale(self):
+        """
+        This generator returns all the parameters of the net except for
+        the last classification layer. Note that for each batchnorm layer,
+        requires_grad is set to False in deeplab_resnet.py, therefore this function does not return
+        any batchnorm parameter
+        """
+        b = []
+        b.append(self.bottleneck)
+
+        for i in range(len(b)):
+            for j in b[i].modules():
+                jj = 0
+                for k in j.parameters():
+                    jj += 1
+                    if k.requires_grad:
+                        yield k
+
     def optim_parameters(self, lr):
-        return [{'params': self.get_1x_lr_params_NOscale(), 'lr': lr}]
+        return [{'params': self.get_1x_lr_params_NOscale(), 'lr': lr},
+                {'params': self.get_10x_lr_params_NOscale(), 'lr': 10*lr}]
 
 def DeeplabRes(num_classes=21):
     model = ResNetMulti(num_classes)

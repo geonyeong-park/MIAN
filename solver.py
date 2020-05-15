@@ -18,6 +18,7 @@ import horovod.torch as hvd
 import math
 import warnings
 import time
+import pickle as pkl
 from model.SVD import SVD_entropy
 
 
@@ -53,6 +54,7 @@ class Solver(object):
         self.num_source = self.num_domain-1
         self.MCD = MCD
         self.batch_size = config['train']['batch_size'][task]
+        self.dataset = loader.dataset
 
         self.domain_label = torch.zeros(self.num_domain*self.batch_size, dtype=torch.long)
         for i in range(self.num_domain):
@@ -65,7 +67,7 @@ class Solver(object):
 
         self.base_lr = base_lr
         self.DFeat_lr = DFeat_lr
-        self.FeatAdv_coeff = config['train']['lambda']['base_model']['bloss_AdvFeat']
+        self.FeatAdv_coeff = config['train']['lambda']['base_model']['bloss_AdvFeat'][task]
         self.num_classes = config['data']['num_classes'][task]
         self.SVD_k = config['train']['SVD_k']
         self.SVD_ld = config['train']['SVD_ld']
@@ -75,6 +77,13 @@ class Solver(object):
         self.power = self.config['train']['lr_decay_power'][task]
 
         self.log_loss = {}
+        self.log_loss['source_acc'] = []
+        self.log_loss['source_loss'] = []
+        self.log_loss['target_acc'] = []
+        self.log_loss['SVD_entropy'] = {
+            domain: [] for domain in self.dataset
+        }
+        self.log_loss['D_loss'] = []
         self.log_lr = {}
         self.log_step = 100
         self.val_step = 100
@@ -105,6 +114,9 @@ class Solver(object):
                 self.C1.eval()
                 self.C2.eval()
                 self._validation(i_iter)
+                with open(os.path.join(self.log_dir, '{}_log.pkl'.format(i_iter+1)), 'wb') as f:
+                    pkl.dump(self.log_loss, f)
+
 
             if (i_iter+1) % self.tsne_step == 0:
                 self._tsne(i_iter)
@@ -244,7 +256,7 @@ class Solver(object):
                                          self._real_domain_label(DFeatlogit, 'Feat'))
 
         Dloss_AdvFeat.backward()
-        self.log_loss['Dloss_AdvFeat'] = Dloss_AdvFeat.item()
+        self.log_loss['D_loss'].append(Dloss_AdvFeat.item())
         self.optDFeat.step()
         # ----------------------------
         # 4. Train Basemodel
@@ -259,7 +271,7 @@ class Solver(object):
         if self.MCD:
             loss_s, _ = self._maximum_classifier_discrepancy(images, labels)
             loss_s.backward()
-            self.log_loss['loss_cen'] = loss_s.item()
+            self.log_loss['source_loss'].append(loss_s.item())
             self.optBase.step()
             self.optC1.step()
             self.optC2.step()
@@ -295,10 +307,11 @@ class Solver(object):
         SVD_en = Variable(torch.tensor(0.), requires_grad=True).to(self.gpu0)
         for d in range(self.num_domain):
             d_feature = adv_feature[d*self.batch_size: (d+1)*self.batch_size]
-            en_transfer_d, _ = SVD_entropy(d_feature, self.SVD_k)
+            en_transfer_d, en_discrim_d = SVD_entropy(d_feature, self.SVD_k)
+            total_en = en_transfer_d + en_discrim_d
+            self.log_loss['SVD_entropy'][self.dataset[d]].append(total_en.item())
             SVD_en += self.SVD_ld * (en_transfer_d)
         SVD_en.backward()
-        self.log_loss['en_transfer_d'] = en_transfer_d.item()
         self.optBase.step()
         self._zero_grad()
 
@@ -313,7 +326,6 @@ class Solver(object):
         elif self.featAdv_algorithm == 'LS':
             bloss_AdvFeat = nn.MSELoss()(DFeatlogit,
                                          self._fake_domain_label(DFeatlogit, 'Feat'))
-        self.log_loss['bloss_AdvFeat'] = bloss_AdvFeat.item()
         bloss_AdvFeat *= self.FeatAdv_coeff
         bloss_AdvFeat.backward()
         self.optBase.step()
@@ -324,24 +336,14 @@ class Solver(object):
             et = time.time() - self.start_time
             et = str(datetime.timedelta(seconds=et))[:-7]
             log = "Elapsed [{}], Iteration [{}/{}]\n".format(et, i_iter+1, self.early_stop_step)
-            for tag, value in self.log_loss.items():
-                log += "{}: {:.4f}, ".format(tag, value)
             h, _ = self.basemodel(images)
             pred = self.C1(h)
             source_pd = pred.detach().data[:self.batch_size*self.num_source].max(1)[1].cpu().numpy()
             source_lb = labels.data.cpu().numpy()
             acc = np.mean(source_pd == source_lb)
-
+            self.log_loss['source_acc'].append(acc.item())
             log += "\nAcc: {:.2f}".format(acc.item()*100)
             print(log)
-
-        if self.config['exp_setting']['use_tensorboard']:
-            if (i_iter+1) % self.log_step == 0:
-                for tag, value in self.log_loss.items():
-                    category, name = tag.split('_')[0], tag.split('_')[1]
-                    self.logger.scalar_summary('{}/{}'.format(category, name), value, i_iter+1)
-                for tag, value in self.log_lr.items():
-                    self.logger.scalar_summary('lr/{}'.format(tag), value, i_iter+1)
 
         if (i_iter+1) % self.save_step == 0:
             print('taking snapshot ...')
@@ -390,7 +392,7 @@ class Solver(object):
 
         info_str = 'Iteration {}: acc1:{:0.2f} acc2:{:0.2f} acc_ensemble:{:0.2f}'.format(i_iter+1,
                                                                                          acc1, acc2, acc3)
-        self.logger.scalar_summary('metrics/val_acc', acc3, i_iter+1)
+        self.log_loss['target_acc'].append(acc3.item())
         print(info_str)
 
         with open(os.path.join(self.log_dir, 'val_result.txt'), 'a') as f:

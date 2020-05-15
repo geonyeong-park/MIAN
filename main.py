@@ -65,10 +65,14 @@ def main(config, args):
 
     # -------------------------------
     # Setting Test arguments
+    if args.task is not None:
+        t = args.task
+        print('task: ', t)
+        config['data']['task'] = t
     if args.advcoeff is not None:
         c = args.advcoeff
         print('advcoeff: ', c)
-        config['train']['lambda']['base_model']['bloss_AdvFeat'] = c
+        config['train']['lambda']['base_model']['bloss_AdvFeat'][task] = c
     if args.no_MCD is not None:
         no_MCD = args.no_MCD
         print('MCD: ', no_MCD)
@@ -76,10 +80,6 @@ def main(config, args):
         t = args.target
         print('target: ', t)
         config['data']['target'] = t
-    if args.task is not None:
-        t = args.task
-        print('task: ', t)
-        config['data']['task'] = t
     if args.SVD_ld is not None:
         s = args.SVD_ld
         print('SVD_en lambda: ', s)
@@ -132,7 +132,7 @@ def main(config, args):
         basemodel.apply(weight_init)
     else:
         basemodel = DeeplabRes(num_classes=num_classes)
-        prev_feature_size = 2048
+        prev_feature_size = 256
 
     basemodel.to(gpu_map['basemodel'])
 

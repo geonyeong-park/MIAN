@@ -52,7 +52,7 @@ train:
     office_caltech_10: 'Momentum' 
     office_home: 'Momentum' 
   SVD_k: 3
-  SVD_ld: 0.0001
+  SVD_ld: 0.001
 
   base_model:
     digits:
@@ -91,7 +91,11 @@ train:
   lambda:
     base_model:
       bloss_Clf: 1.
-      bloss_AdvFeat: 1
+      bloss_AdvFeat: 
+        digits: 1.
+        office: 0.1
+        office_home: 0.1
+        office_caltech_10: 0.1
     netD:
       Vanila:
         D_critic: 1

@@ -13,9 +13,7 @@ class FeatDiscriminator(nn.Module):
         self.conv_domain_cls_patch = nn.Sequential(*[
             spectral_norm(nn.Linear(channel, channel//2)),
             nn.ReLU(inplace=True),
-            spectral_norm(nn.Linear(channel//2, channel//4)),
-            nn.ReLU(inplace=True),
-            nn.Linear(channel//4, num_domain)
+            nn.Linear(channel//2, num_domain)
         ])
 
 
