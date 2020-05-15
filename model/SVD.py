@@ -8,11 +8,11 @@ def SVD_entropy(feature, k):
     for ld in sigma:
         en_transfer = Entropy(sigma_normalized[ :k])
         en_discrim = Entropy(sigma_normalized[k: ])
-    return en_transfer, en_discrim
+    return en_transfer, en_discrim, sigma_normalized
 
 def Entropy(input_):
     bs = input_.size(0)
-    epsilon = 1e-5
+    epsilon = 1e-7
     entropy = -input_ * torch.log(input_ + epsilon)
     entropy = torch.sum(entropy)
     return entropy

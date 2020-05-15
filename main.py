@@ -43,6 +43,8 @@ def get_arguments():
                         help="")
     parser.add_argument("--task", type=str, default=None, required=False,
                         help="")
+    parser.add_argument("--partial_domain", type=str, nargs='+', default=None,
+                        help="")
     parser.add_argument("--optimizer", type=str, default=None, required=False,
                         help="")
     parser.add_argument("--SVD_ld", type=float, default=None, required=False,
@@ -69,10 +71,16 @@ def main(config, args):
         t = args.task
         print('task: ', t)
         config['data']['task'] = t
+    if args.partial_domain is not None:
+        p = args.partial_domain
+        print('partial_domain: ', p)
+        config['data']['domain'][args.task] = p
+        config['data']['num_domain'][args.task] = len(p)
+
     if args.advcoeff is not None:
         c = args.advcoeff
         print('advcoeff: ', c)
-        config['train']['lambda']['base_model']['bloss_AdvFeat'][task] = c
+        config['train']['lambda']['base_model']['bloss_AdvFeat'][args.task] = c
     if args.no_MCD is not None:
         no_MCD = args.no_MCD
         print('MCD: ', no_MCD)

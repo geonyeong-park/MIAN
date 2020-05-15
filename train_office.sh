@@ -23,6 +23,6 @@ for ((i=0;i<=3;i++))
 do
     for target in "${domain[@]}"; do
         python3 main.py --gpu $1 --task 'office' --optimizer 'Momentum' --target $target \
-            --exp_name "office_full_adv0.1_ld1e-4_"${target}"_seed_"${i}"" --SVD_ld 0.0001
+            --exp_name "office_full_adv0.1_ld1e-3_"${target}"_seed_"${i}"" 
     done
 done

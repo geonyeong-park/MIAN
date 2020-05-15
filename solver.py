@@ -83,6 +83,9 @@ class Solver(object):
         self.log_loss['SVD_entropy'] = {
             domain: [] for domain in self.dataset
         }
+        self.log_loss['SVD_singular'] = {
+            domain: [] for domain in self.dataset
+        }
         self.log_loss['D_loss'] = []
         self.log_lr = {}
         self.log_step = 100
@@ -307,9 +310,10 @@ class Solver(object):
         SVD_en = Variable(torch.tensor(0.), requires_grad=True).to(self.gpu0)
         for d in range(self.num_domain):
             d_feature = adv_feature[d*self.batch_size: (d+1)*self.batch_size]
-            en_transfer_d, en_discrim_d = SVD_entropy(d_feature, self.SVD_k)
+            en_transfer_d, en_discrim_d, singular_values = SVD_entropy(d_feature, self.SVD_k)
             total_en = en_transfer_d + en_discrim_d
             self.log_loss['SVD_entropy'][self.dataset[d]].append(total_en.item())
+            self.log_loss['SVD_singular'][self.dataset[d]].append(singular_values)
             SVD_en += self.SVD_ld * (en_transfer_d)
         SVD_en.backward()
         self.optBase.step()
