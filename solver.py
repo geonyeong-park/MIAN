@@ -117,9 +117,10 @@ class Solver(object):
                 self.C1.eval()
                 self.C2.eval()
                 self._validation(i_iter)
+
+            if (i_iter+1) % (10*self.val_step) == 0:
                 with open(os.path.join(self.log_dir, '{}_log.pkl'.format(i_iter+1)), 'wb') as f:
                     pkl.dump(self.log_loss, f)
-
 
             if (i_iter+1) % self.tsne_step == 0:
                 self._tsne(i_iter)
@@ -259,7 +260,8 @@ class Solver(object):
                                          self._real_domain_label(DFeatlogit, 'Feat'))
 
         Dloss_AdvFeat.backward()
-        self.log_loss['D_loss'].append(Dloss_AdvFeat.item())
+        if (i_iter+1) % self.log_step == 0:
+            self.log_loss['D_loss'].append(Dloss_AdvFeat.item())
         self.optDFeat.step()
         # ----------------------------
         # 4. Train Basemodel
@@ -274,7 +276,8 @@ class Solver(object):
         if self.MCD:
             loss_s, _ = self._maximum_classifier_discrepancy(images, labels)
             loss_s.backward()
-            self.log_loss['source_loss'].append(loss_s.item())
+            if (i_iter+1) % self.log_step == 0:
+                self.log_loss['source_loss'].append(loss_s.item())
             self.optBase.step()
             self.optC1.step()
             self.optC2.step()
@@ -312,8 +315,9 @@ class Solver(object):
             d_feature = adv_feature[d*self.batch_size: (d+1)*self.batch_size]
             en_transfer_d, en_discrim_d, singular_values = SVD_entropy(d_feature, self.SVD_k)
             total_en = en_transfer_d + en_discrim_d
-            self.log_loss['SVD_entropy'][self.dataset[d]].append(total_en.item())
-            self.log_loss['SVD_singular'][self.dataset[d]].append(singular_values)
+            if (i_iter+1) % self.log_step == 0:
+                self.log_loss['SVD_entropy'][self.dataset[d]].append(total_en.item())
+                self.log_loss['SVD_singular'][self.dataset[d]].append(singular_values)
             SVD_en += self.SVD_ld * (en_transfer_d)
         SVD_en.backward()
         self.optBase.step()
@@ -345,7 +349,8 @@ class Solver(object):
             source_pd = pred.detach().data[:self.batch_size*self.num_source].max(1)[1].cpu().numpy()
             source_lb = labels.data.cpu().numpy()
             acc = np.mean(source_pd == source_lb)
-            self.log_loss['source_acc'].append(acc.item())
+            if (i_iter+1) % self.log_step == 0:
+                self.log_loss['source_acc'].append(acc.item())
             log += "\nAcc: {:.2f}".format(acc.item()*100)
             print(log)
 
