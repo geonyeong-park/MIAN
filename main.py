@@ -49,6 +49,8 @@ def get_arguments():
                         help="")
     parser.add_argument("--SVD_ld", type=float, default=None, required=False,
                         help="")
+    parser.add_argument("--SVD_k", type=int, default=None, required=False,
+                        help="")
     parser.add_argument("--resume", type=str, default=None, required=False, help="")
 
     return parser.parse_args()
@@ -92,6 +94,10 @@ def main(config, args):
         s = args.SVD_ld
         print('SVD_en lambda: ', s)
         config['train']['SVD_ld'] = s
+    if args.SVD_k is not None:
+        k = args.SVD_k
+        print('SVD_en k: ', k)
+        config['train']['SVD_k'] = k
 
 
     if args.optimizer is not None:

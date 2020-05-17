@@ -18,11 +18,12 @@ done
 END
 
 domain=("Amazon" "DSLR" "Webcam")
+k=(1 2 4 5 6 7 8)
 
-for ((i=0;i<=3;i++))
-do
+for ((i=0;i<=3;i++)); do
     for target in "${domain[@]}"; do
         python3 main.py --gpu $1 --task 'office' --optimizer 'Momentum' --target $target \
-            --exp_name "office_full_fullEN_adv0.1_ld1e-3_"${target}"_seed_"${i}"" --SVD_ld 0.001
+            --exp_name "adv0.05_ld1e-3_"${target}"_seed_"${i}"" \
+            --SVD_ld 0.001 --advcoeff 0.05
     done
 done
