@@ -118,15 +118,13 @@ class Solver(object):
                 self.C2.eval()
                 self._validation(i_iter)
 
-            if (i_iter+1) % (10*self.val_step) == 0:
-                with open(os.path.join(self.log_dir, '{}_log.pkl'.format(i_iter+1)), 'wb') as f:
-                    pkl.dump(self.log_loss, f)
-
             if (i_iter+1) % self.tsne_step == 0:
                 self._tsne(i_iter)
                 self.basemodel.to(self.gpu_map['basemodel'])
 
             if (i_iter+1) >= self.config['train']['num_steps_stop']:
+                with open(os.path.join(self.log_dir, '{}_log.pkl'.format(i_iter+1)), 'wb') as f:
+                    pkl.dump(self.log_loss, f)
                 break
                 print('Training Finished')
 
@@ -261,7 +259,7 @@ class Solver(object):
 
         Dloss_AdvFeat.backward()
         if (i_iter+1) % self.log_step == 0:
-            self.log_loss['D_loss'].append(Dloss_AdvFeat.item())
+            self.log_loss['D_loss'].append(Dloss_AdvFeat.cpu().item())
         self.optDFeat.step()
         # ----------------------------
         # 4. Train Basemodel
@@ -277,7 +275,7 @@ class Solver(object):
             loss_s, _ = self._maximum_classifier_discrepancy(images, labels)
             loss_s.backward()
             if (i_iter+1) % self.log_step == 0:
-                self.log_loss['source_loss'].append(loss_s.item())
+                self.log_loss['source_loss'].append(loss_s.cpu().item())
             self.optBase.step()
             self.optC1.step()
             self.optC2.step()
@@ -316,9 +314,9 @@ class Solver(object):
             en_transfer_d, en_discrim_d, singular_values = SVD_entropy(d_feature, self.SVD_k)
             total_en = en_transfer_d + en_discrim_d
             if (i_iter+1) % self.log_step == 0:
-                self.log_loss['SVD_entropy'][self.dataset[d]].append(total_en.item())
-                self.log_loss['SVD_singular'][self.dataset[d]].append(singular_values)
-            SVD_en += self.SVD_ld * (en_transfer_d)
+                self.log_loss['SVD_entropy'][self.dataset[d]].append(total_en.cpu().item())
+                self.log_loss['SVD_singular'][self.dataset[d]].append(singular_values.cpu())
+            SVD_en += self.SVD_ld * total_en
         SVD_en.backward()
         self.optBase.step()
         self._zero_grad()
@@ -350,7 +348,7 @@ class Solver(object):
             source_lb = labels.data.cpu().numpy()
             acc = np.mean(source_pd == source_lb)
             if (i_iter+1) % self.log_step == 0:
-                self.log_loss['source_acc'].append(acc.item())
+                self.log_loss['source_acc'].append(acc.cpu().item())
             log += "\nAcc: {:.2f}".format(acc.item()*100)
             print(log)
 
@@ -401,7 +399,7 @@ class Solver(object):
 
         info_str = 'Iteration {}: acc1:{:0.2f} acc2:{:0.2f} acc_ensemble:{:0.2f}'.format(i_iter+1,
                                                                                          acc1, acc2, acc3)
-        self.log_loss['target_acc'].append(acc3.item())
+        self.log_loss['target_acc'].append(acc3.cpu().item())
         print(info_str)
 
         with open(os.path.join(self.log_dir, 'val_result.txt'), 'a') as f:

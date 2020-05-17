@@ -4,7 +4,7 @@ import torch
 
 def SVD_entropy(feature, k):
     _, sigma, _ = torch.svd(feature)
-    sigma_normalized = sigma / torch.sum(sigma)
+    sigma_normalized = torch.pow(sigma, 2) / torch.sum(torch.pow(sigma,2))
     for ld in sigma:
         en_transfer = Entropy(sigma_normalized[ :k])
         en_discrim = Entropy(sigma_normalized[k: ])
