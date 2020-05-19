@@ -20,7 +20,6 @@ class ResNetMulti(nn.Module):
         self.conv5 = nn.Sequential(*list(resnet.children())[7])
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.bottleneck = nn.Conv2d(2048, 256, 3, 1, 1)
 
     def forward(self, x):
         conv1 = self.conv1(x)
@@ -28,7 +27,6 @@ class ResNetMulti(nn.Module):
         conv3 = self.conv3(conv2)
         conv4 = self.conv4(conv3)
         conv5 = self.conv5(conv4)
-        conv5 = self.bottleneck(conv5)
 
         h = self.avgpool(conv5)
         h = torch.flatten(h, 1)

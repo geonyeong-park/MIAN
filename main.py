@@ -17,6 +17,7 @@ from model.discriminator import FeatDiscriminator
 from model.classifier import Predictor
 from dataset.multiloader import MultiDomainLoader
 from utils.weight_init import weight_init
+import json
 
 def get_arguments():
     """Parse all the arguments provided from the CLI.
@@ -58,7 +59,7 @@ def get_arguments():
     return parser.parse_args()
 
 
-def main(config, args):
+def main(config, args, param_path):
     """Create the model and start the training."""
 
     # -------------------------------
@@ -113,6 +114,9 @@ def main(config, args):
         assert args.task is not None
         config['train']['optimizer'][args.task] = o
 
+    with open(os.path.join(param_path, 'config.json'), 'w') as f:
+        json.dump(config, f)
+
     # -------------------------------
 
     cudnn.enabled = True
@@ -152,7 +156,7 @@ def main(config, args):
         basemodel.apply(weight_init)
     else:
         basemodel = DeeplabRes(num_classes=num_classes)
-        prev_feature_size = 256
+        prev_feature_size = 2048
 
     basemodel.to(gpu_map['basemodel'])
 
@@ -228,4 +232,4 @@ if __name__ == '__main__':
             f.close()
     copyfile(args.yaml, os.path.join(log_dir, exp_name, 'config.yaml'))
 
-    main(config, args)
+    main(config, args, os.path.join(log_dir, exp_name))
