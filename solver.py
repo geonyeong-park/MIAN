@@ -318,7 +318,7 @@ class Solver(object):
                 if (i_iter+1) % self.log_step == 0:
                     self.log_loss['SVD_entropy'][self.dataset[d]].append(total_en.cpu().item())
                     self.log_loss['SVD_singular'][self.dataset[d]].append(singular_values.cpu())
-                SVD_en += self.SVD_ld * en_transfer_d
+                SVD_en += self.SVD_ld * (-total_en)
             else:
                 norm, _ = SVD_norm(d_feature, self.SVD_k)
                 SVD_en += self.SVD_ld * norm
