@@ -72,6 +72,7 @@ class Solver(object):
         self.SVD_k = config['train']['SVD_k']
         self.SVD_ld = config['train']['SVD_ld']
         self.SVD_norm = config['train']['SVD_norm']
+        self.no_align = config['train']['no_align']
 
         self.total_step = self.config['train']['num_steps']
         self.early_stop_step = self.config['train']['num_steps_stop']
@@ -148,6 +149,17 @@ class Solver(object):
         for i in range(self.num_domain):
             ones[self.batch_size*i: self.batch_size*(i+1), i] = 0.
         return ones.to(self.gpu_map['netD{}'.format(model)])
+
+    def _fake_domain_label_no_align(self, tensor, model):
+        if type(tensor).__module__ == np.__name__:
+            tensor = torch.tensor(tensor)
+        zeros = torch.zeros_like(tensor, dtype=torch.float)
+        for i in range(self.num_domain):
+            if i < self.num_source:
+                zeros[self.batch_size*i: self.batch_size*(i+1), -1] = 1.
+            else:
+                zeros[self.batch_size*i: self.batch_size*(i+1), :-1] = 1.
+        return zeros.to(self.gpu_map['netD{}'.format(model)])
 
     def _real_domain_label(self, tensor, model):
         if type(tensor).__module__ == np.__name__:
@@ -332,12 +344,15 @@ class Solver(object):
         adv_feature, _ = self.basemodel(images)
         DFeatlogit = self.netDFeat(adv_feature.to(self.gpu_map['netDFeat']))
 
+        if self.no_align:
+            fake_domain_label = self._fake_domain_label_no_align(DFeatlogit, 'Feat')
+        else:
+            fake_domain_label = self._fake_domain_label(DFeatlogit, 'Feat')
+
         if self.featAdv_algorithm == 'Vanila':
-            bloss_AdvFeat = nn.BCEWithLogitsLoss()(DFeatlogit,
-                                                  self._fake_domain_label(DFeatlogit, 'Feat'))
+            bloss_AdvFeat = nn.BCEWithLogitsLoss()(DFeatlogit, fake_domain_label)
         elif self.featAdv_algorithm == 'LS':
-            bloss_AdvFeat = nn.MSELoss()(DFeatlogit,
-                                         self._fake_domain_label(DFeatlogit, 'Feat'))
+            bloss_AdvFeat = nn.MSELoss()(DFeatlogit, fake_domain_label)
         bloss_AdvFeat *= self.FeatAdv_coeff
         bloss_AdvFeat.backward()
         self.optBase.step()

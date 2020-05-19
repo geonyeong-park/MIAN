@@ -54,6 +54,8 @@ def get_arguments():
                         help="")
     parser.add_argument("--SVD_norm", default=False, required=False, action='store_true',
                         help="")
+    parser.add_argument("--no_align", default=False, required=False, action='store_true',
+                        help="")
     parser.add_argument("--resume", type=str, default=None, required=False, help="")
 
     return parser.parse_args()
@@ -105,8 +107,10 @@ def main(config, args, param_path):
         n = args.SVD_norm
         print('SVD_en norm: ', n)
         config['train']['SVD_norm'] = n
-
-
+    if args.no_align is not None:
+        na = args.no_align
+        print('no_align: ', na)
+        config['train']['no_align'] = na
     if args.optimizer is not None:
         o = args.optimizer
         print('optimizer: ', o)
@@ -156,7 +160,7 @@ def main(config, args, param_path):
         basemodel.apply(weight_init)
     else:
         basemodel = DeeplabRes(num_classes=num_classes)
-        prev_feature_size = 2048
+        prev_feature_size = 256
 
     basemodel.to(gpu_map['basemodel'])
 

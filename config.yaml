@@ -51,8 +51,8 @@ train:
     office: 'Momentum' 
     office_caltech_10: 'Momentum' 
     office_home: 'Momentum' 
-  SVD_k: 3
-  SVD_ld: 0.001
+  SVD_k: 1
+  SVD_ld: 0.0001
 
   base_model:
     digits:
