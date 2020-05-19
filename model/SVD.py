@@ -16,3 +16,8 @@ def Entropy(input_):
     entropy = -input_ * torch.log(input_ + epsilon)
     entropy = torch.sum(entropy)
     return entropy
+
+def SVD_norm(feature, k):
+    _, sigma, _ = torch.svd(feature)
+    sigma_squared = torch.pow(sigma[0], 2)
+    return sigma_squared, None

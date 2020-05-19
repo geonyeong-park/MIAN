@@ -51,6 +51,8 @@ def get_arguments():
                         help="")
     parser.add_argument("--SVD_k", type=int, default=None, required=False,
                         help="")
+    parser.add_argument("--SVD_norm", default=False, required=False, action='store_true',
+                        help="")
     parser.add_argument("--resume", type=str, default=None, required=False, help="")
 
     return parser.parse_args()
@@ -98,6 +100,10 @@ def main(config, args):
         k = args.SVD_k
         print('SVD_en k: ', k)
         config['train']['SVD_k'] = k
+    if args.SVD_norm is not None:
+        n = args.SVD_norm
+        print('SVD_en norm: ', n)
+        config['train']['SVD_norm'] = n
 
 
     if args.optimizer is not None:
