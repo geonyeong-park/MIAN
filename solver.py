@@ -102,6 +102,8 @@ class Solver(object):
         # Broadcast parameters and optimizer state for every processes
 
         self.start_time = time.time()
+        stop_iter = self.config['train']['num_steps_stop']
+        SVD_ld_init = self.SVD_ld
 
         for i_iter in range(self.total_step):
             self.basemodel.train()
@@ -109,9 +111,8 @@ class Solver(object):
             self.C2.train()
             self.netDFeat.train()
 
-            #p = float(i_iter) / self.config['train']['num_steps_stop']
-            #self.FeatAdv_coeff = 2. / (1. + np.exp(-6. * p)) - 1
-
+            p = float(i_iter) / self.config['train']['num_steps_stop']
+            self.SVD_ld = SVD_ld_init * (2 - 2. / (1. + np.exp(-10. * p)))
             self._train_step(i_iter)
 
             if (i_iter+1) % self.val_step == 0:
@@ -119,6 +120,7 @@ class Solver(object):
                 self.C1.eval()
                 self.C2.eval()
                 self._validation(i_iter)
+                print('SVD ld: ', self.SVD_ld)
 
             if (i_iter+1) % self.tsne_step == 0:
                 self._tsne(i_iter)

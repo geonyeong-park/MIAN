@@ -22,7 +22,7 @@ domain=("Amazon" "DSLR" "Webcam")
 for ((i=0;i<=3;i++)); do
     for target in "${domain[@]}"; do
         python3 main.py --gpu $1 --task 'office' --optimizer 'Momentum' --target $target \
-            --exp_name "Full_noMCD_noAlign_1e-4_adv0.2_"$target"_seed_"$i"" \
-            --SVD_ld 0.0001 --SVD_k 1 --advcoeff 0.2 --no_MCD --no_align
+            --exp_name "Full_noMCD_decay_1e-5_adv0.2_"$target"_seed_"$i"" \
+            --SVD_ld 0.00001 --SVD_norm --SVD_k 1 --advcoeff 0.2 --no_MCD
     done
 done
