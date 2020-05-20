@@ -326,12 +326,12 @@ class Solver(object):
         SVD_en = Variable(torch.tensor(0.), requires_grad=False).to(self.gpu0)
         for d in range(self.num_domain):
             d_feature = adv_feature[d*self.batch_size: (d+1)*self.batch_size]
+            en_transfer_d, en_discrim_d, singular_values = SVD_entropy(d_feature, self.SVD_k)
+            total_en = en_transfer_d + en_discrim_d
+            if (i_iter+1) % self.log_step == 0:
+                self.log_loss['SVD_entropy'][self.dataset[d]].append(total_en.cpu().item())
+                self.log_loss['SVD_singular'][self.dataset[d]].append(singular_values.cpu())
             if not self.SVD_norm:
-                en_transfer_d, en_discrim_d, singular_values = SVD_entropy(d_feature, self.SVD_k)
-                total_en = en_transfer_d + en_discrim_d
-                if (i_iter+1) % self.log_step == 0:
-                    self.log_loss['SVD_entropy'][self.dataset[d]].append(total_en.cpu().item())
-                    self.log_loss['SVD_singular'][self.dataset[d]].append(singular_values.cpu())
                 SVD_en += self.SVD_ld * (-total_en)
             else:
                 norm, _ = SVD_norm(d_feature, self.SVD_k)
