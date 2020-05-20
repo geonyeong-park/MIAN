@@ -53,6 +53,8 @@ train:
     office_home: 'Momentum' 
   SVD_k: 1
   SVD_ld: 0.0001
+  SVD_ld_adapt: 'exponential' # auto, exponential, constant
+  SVD_ld_thres: 0.8 # auto, exponential, constant
 
   base_model:
     digits:

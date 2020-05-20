@@ -71,8 +71,12 @@ class Solver(object):
         self.num_classes = config['data']['num_classes'][task]
         self.SVD_k = config['train']['SVD_k']
         self.SVD_ld = config['train']['SVD_ld']
+        self.SVD_ld_init = self.SVD_ld
         self.SVD_norm = config['train']['SVD_norm']
         self.no_align = config['train']['no_align']
+        self.SVD_ld_adapt = config['train']['SVD_ld_adapt']
+        self.SVD_ld_thres = config['train']['SVD_ld_thres']
+        self.ld_alpha = 1e-6
 
         self.total_step = self.config['train']['num_steps']
         self.early_stop_step = self.config['train']['num_steps_stop']
@@ -103,7 +107,9 @@ class Solver(object):
 
         self.start_time = time.time()
         stop_iter = self.config['train']['num_steps_stop']
-        SVD_ld_init = self.SVD_ld
+        self.SVD_ld_array = [self.SVD_ld for _ in range(self.num_domain)]
+        if self.SVD_ld_adapt == 'auto':
+            self.SVD_ld_array = [0. for _ in range(self.num_domain)]  # initialize with zero debiased lambda
 
         for i_iter in range(self.total_step):
             self.basemodel.train()
@@ -111,8 +117,6 @@ class Solver(object):
             self.C2.train()
             self.netDFeat.train()
 
-            p = float(i_iter) / self.config['train']['num_steps_stop']
-            self.SVD_ld = SVD_ld_init * (2 - 2. / (1. + np.exp(-10. * p)))
             self._train_step(i_iter)
 
             if (i_iter+1) % self.val_step == 0:
@@ -120,7 +124,7 @@ class Solver(object):
                 self.C1.eval()
                 self.C2.eval()
                 self._validation(i_iter)
-                print('SVD ld: ', self.SVD_ld)
+                print('SVD ld: ', self.SVD_ld_array)
 
             if (i_iter+1) % self.tsne_step == 0:
                 self._tsne(i_iter)
@@ -137,12 +141,6 @@ class Solver(object):
         self.log_lr['C1'] = adjust_learning_rate(self.optC1, 10*self.base_lr, i_iter, self.total_step, self.power)
         self.log_lr['C2'] = adjust_learning_rate(self.optC2, 10*self.base_lr, i_iter, self.total_step, self.power)
         self.log_lr['DFeat'] = adjust_learning_rate(self.optDFeat, 10*self.DFeat_lr, i_iter, self.total_step, self.power)
-
-    def _denorm(self, data):
-        N, _, H, W = data.size()
-        mean=torch.FloatTensor([0.485, 0.456, 0.406]).view(1, -1, 1, 1).repeat(N, 1, H, W)
-        std=torch.FloatTensor([0.229, 0.224, 0.225]).view(1, -1, 1, 1).repeat(N, 1, H, W)
-        return mean+data*std
 
     def _fake_domain_label(self, tensor, model):
         if type(tensor).__module__ == np.__name__:
@@ -171,29 +169,15 @@ class Solver(object):
             zeros[self.batch_size*i: self.batch_size*(i+1), i] = 1.
         return zeros.to(self.gpu_map['netD{}'.format(model)])
 
-    def _gradient_penalty(self, real, fake, ld):
-        alpha = torch.rand(real.size(0), 1, 1, 1).to(self.gpu_map['netDFeat'])
-        x_hat = (alpha * real.data + (1 - alpha) * fake.data).requires_grad_(True)
-        out_src, _, _ = self.netDFeat(x_hat)
-
-        weight = torch.ones(out_src.size()).to(self.gpu_map['netDFeat'])
-        dydx = torch.autograd.grad(outputs=out_src,
-                                   inputs=x_hat,
-                                   grad_outputs=weight,
-                                   retain_graph=True,
-                                   create_graph=True,
-                                   only_inputs=True)[0]
-
-        dydx = dydx.view(dydx.size(0), -1)
-        dydx_l2norm = torch.sqrt(torch.sum(dydx**2, dim=1))
-        return ld * torch.mean((dydx_l2norm-1)**2)
-
-    def _D_hingeLoss(self, fake, real):
-        loss = torch.mean(torch.relu(1. - real)) + torch.mean(torch.relu(1. + fake))
-        return loss
-
-    def _G_hingeLoss(self, fake):
-        return - torch.mean(fake)
+    def _update_SVD_ld(self, entropy, i_iter, index):
+        assert self.SVD_ld_adapt == 'auto' or self.SVD_ld_adapt == 'exponential' or self.SVD_ld_adapt == 'constant'
+        if self.SVD_ld_adapt == 'auto':
+            self.SVD_ld[index] = max(0, self.SVD_ld[index] + self.ld_alpha * (self.SVD_ld_thres - entropy))
+        elif self.SVD_ld_adapt == 'exponential':
+            p = float(i_iter) / self.config['train']['num_steps_stop']
+            self.SVD_ld[index] = self.SVD_ld_init * (2. - 2. / (1. + np.exp(-10. * p)))
+        else:
+            pass
 
     def _discrepancy(self, out1, out2):
         return torch.mean(torch.abs(F.softmax(out1, dim=1) - F.softmax(out2, dim=1)))
@@ -219,15 +203,6 @@ class Solver(object):
         self.optBase.zero_grad()
         self.optC1.zero_grad()
         self.optC2.zero_grad()
-
-    def _backprop_weighted_losses(self, lambdas, retain_graph=False):
-        loss = 0
-        for k in lambdas.keys():
-            k_loss = getattr(self, k)
-            self.log_loss[k] = k_loss.item()
-            weight = lambdas[k]['cur']
-            loss += k_loss.to(self.gpu0) * weight
-        loss.backward(retain_graph=retain_graph)
 
     def _train_step(self, i_iter):
         self._adjust_lr_opts(i_iter)
@@ -328,14 +303,19 @@ class Solver(object):
             d_feature = adv_feature[d*self.batch_size: (d+1)*self.batch_size]
             en_transfer_d, en_discrim_d, singular_values = SVD_entropy(d_feature, self.SVD_k)
             total_en = en_transfer_d + en_discrim_d
+
             if (i_iter+1) % self.log_step == 0:
                 self.log_loss['SVD_entropy'][self.dataset[d]].append(total_en.cpu().item())
                 self.log_loss['SVD_singular'][self.dataset[d]].append(singular_values.cpu())
+
+            with torch.no_grad():
+                self._update_SVD_ld(total_en.item(), i_iter, d)
+
             if not self.SVD_norm:
-                SVD_en += self.SVD_ld * (-total_en)
+                SVD_en += self.SVD_ld[d] * (-total_en)
             else:
                 norm, _ = SVD_norm(d_feature, self.SVD_k)
-                SVD_en += self.SVD_ld * norm
+                SVD_en += self.SVD_ld[d] * norm
 
         SVD_en.backward()
         self.optBase.step()

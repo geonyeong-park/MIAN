@@ -56,6 +56,7 @@ def get_arguments():
                         help="")
     parser.add_argument("--no_align", default=False, required=False, action='store_true',
                         help="")
+    parser.add_argument("--SVD_ld_adapt", default='exponential', required=False, help="auto, constant, exponential")
     parser.add_argument("--resume", type=str, default=None, required=False, help="")
 
     return parser.parse_args()
@@ -111,6 +112,10 @@ def main(config, args, param_path):
         na = args.no_align
         print('no_align: ', na)
         config['train']['no_align'] = na
+    if args.SVD_ld_adapt is not None:
+        ab = args.SVD_ld_adapt
+        print('SVD_ld adapt: ', ab)
+        config['train']['SVD_ld_adapt'] = ab
     if args.optimizer is not None:
         o = args.optimizer
         print('optimizer: ', o)
