@@ -172,10 +172,10 @@ class Solver(object):
     def _update_SVD_ld(self, entropy, i_iter, index):
         assert self.SVD_ld_adapt == 'auto' or self.SVD_ld_adapt == 'exponential' or self.SVD_ld_adapt == 'constant'
         if self.SVD_ld_adapt == 'auto':
-            self.SVD_ld[index] = max(0, self.SVD_ld[index] + self.ld_alpha * (self.SVD_ld_thres - entropy))
+            self.SVD_ld_array[index] = max(0, self.SVD_ld_array[index] + self.ld_alpha * (self.SVD_ld_thres - entropy))
         elif self.SVD_ld_adapt == 'exponential':
             p = float(i_iter) / self.config['train']['num_steps_stop']
-            self.SVD_ld[index] = self.SVD_ld_init * (2. - 2. / (1. + np.exp(-10. * p)))
+            self.SVD_ld_array[index] = self.SVD_ld_init * (2. - 2. / (1. + np.exp(-10. * p)))
         else:
             pass
 
@@ -312,10 +312,10 @@ class Solver(object):
                 self._update_SVD_ld(total_en.item(), i_iter, d)
 
             if not self.SVD_norm:
-                SVD_en += self.SVD_ld[d] * (-total_en)
+                SVD_en += self.SVD_ld_array[d] * (-total_en)
             else:
                 norm, _ = SVD_norm(d_feature, self.SVD_k)
-                SVD_en += self.SVD_ld[d] * norm
+                SVD_en += self.SVD_ld_array[d] * norm
 
         SVD_en.backward()
         self.optBase.step()

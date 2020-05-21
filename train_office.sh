@@ -17,7 +17,7 @@ done
 
 END
 
-domain=("Amazon" "DSLR" "Webcam")
+domain=("Webcam" "DSLR" "Amazon")
 
 for ((i=0;i<=3;i++)); do
     for target in "${domain[@]}"; do
