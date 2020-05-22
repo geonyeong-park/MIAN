@@ -13,7 +13,7 @@ from solver import Solver
 from model.deeplab_res import DeeplabRes
 from model.deeplab_digit import DeepDigits
 from model.deeplab_vgg import DeeplabVGG
-from model.discriminator import FeatDiscriminator
+from model.discriminator import DigitDiscriminator, OfficeDiscriminator
 from model.classifier import Predictor
 from dataset.multiloader import MultiDomainLoader
 from utils.weight_init import weight_init
@@ -172,7 +172,11 @@ def main(config, args, param_path):
     c1 = Predictor(prev_feature_size=prev_feature_size, num_classes=num_classes).to(gpu_map['C'])
     c2 = Predictor(prev_feature_size=prev_feature_size, num_classes=num_classes).to(gpu_map['C'])
 
-    netDFeat = FeatDiscriminator(channel=prev_feature_size, num_domain=num_domain)
+    if task == 'digits':
+        netDFeat = DigitDiscriminator(channel=prev_feature_size, num_domain=num_domain)
+    else:
+        netDFeat = OfficeDiscriminator(channel=prev_feature_size, num_domain=num_domain)
+
     netDFeat.to(gpu_map['netDFeat'])
 
     c1.apply(weight_init)
