@@ -17,12 +17,13 @@ done
 
 END
 
-domain=("Amazon" "Caltech" "DSLR" "Webcam")
+domain=("USPS" "SVHN" "SYNTH" "MNIST")
 
-for ((i=0;i<=3;i++)); do
+for ((i=0;i<=1;i++)); do
     for target in "${domain[@]}"; do
-        python3 main.py --gpu $1 --task 'office_caltech_10' --target $target \
-            --exp_name "office_0.05_"${target}"_seed_"${i}"" --advcoeff 0.05 
+        python3 main.py --gpu $1 --task 'digits' --target $target \
+            --exp_name "digits_noMCD_"${target}"_seed_"${i}"" \
+            --SVD_ld 0. --no_MCD
     done
 done
 
