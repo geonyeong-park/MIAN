@@ -80,7 +80,7 @@ class Solver(object):
         self.ld_alpha = 1e-6
 
         self.total_step = self.config['train']['num_steps']
-        self.early_stop_step = self.config['train']['num_steps_stop']
+        self.early_stop_step = self.config['train']['num_steps_stop'][task]
         self.power = self.config['train']['lr_decay_power'][task]
 
         self.log_loss = {}
@@ -98,7 +98,7 @@ class Solver(object):
         self.log_step = 100
         self.val_step = 100
         self.tsne_step = 2000
-        self.save_step = 1000 #5000
+        self.save_step = 10000 #5000
         self.logger = Logger(self.log_dir)
 
         self.tsne = TSNE(n_components=2, perplexity=20, init='pca', n_iter=3000)
@@ -107,7 +107,6 @@ class Solver(object):
         # Broadcast parameters and optimizer state for every processes
 
         self.start_time = time.time()
-        stop_iter = self.config['train']['num_steps_stop']
         self.SVD_ld_array = [self.SVD_ld for _ in range(self.num_domain)]
         if self.SVD_ld_adapt == 'auto':
             self.SVD_ld_array = [0. for _ in range(self.num_domain)]  # initialize with zero debiased lambda
@@ -131,7 +130,7 @@ class Solver(object):
                 self._tsne(i_iter)
                 self.basemodel.to(self.gpu_map['basemodel'])
 
-            if (i_iter+1) >= self.config['train']['num_steps_stop']:
+            if (i_iter+1) >= self.early_stop_step:
                 with open(os.path.join(self.log_dir, '{}_log.pkl'.format(i_iter+1)), 'wb') as f:
                     pkl.dump(self.log_loss, f)
                 break
@@ -182,7 +181,7 @@ class Solver(object):
         if self.SVD_ld_adapt == 'auto':
             self.SVD_ld_array[index] = max(0, self.SVD_ld_array[index] + self.ld_alpha * (self.SVD_ld_thres - entropy))
         elif self.SVD_ld_adapt == 'exponential':
-            p = float(i_iter) / self.config['train']['num_steps_stop']
+            p = float(i_iter) / self.early_stop_step
             self.SVD_ld_array[index] = self.SVD_ld_init * (2. - 2. / (1. + np.exp(-10. * p)))
         else:
             pass

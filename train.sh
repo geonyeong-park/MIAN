@@ -17,13 +17,24 @@ done
 
 END
 
-domain=("USPS" "SVHN" "SYNTH" "MNIST")
+domain=("SVHN" "SYNTH" "MNIST")
 
-for ((i=0;i<=1;i++)); do
-    for target in "${domain[@]}"; do
-        python3 main.py --gpu $1 --task 'digits' --target $target \
-            --exp_name "digits_noMCD_"${target}"_seed_"${i}"" \
-            --SVD_ld 0. --no_MCD
-    done
+for ((i=0;i<=0;i++)); do
+    python3 main.py --gpu $1 --task 'office' --target Amazon --partial_domain Amazon DSLR \
+        --exp_name "office_sourceonly_partial_DtoA_seed"${i}"" \
+        --SVD_ld 0. --no_MCD --advcoeff 0.
+    python3 main.py --gpu $1 --task 'office' --target Amazon --partial_domain Amazon Webcam \
+        --exp_name "office_sourceonly_partial_WtoA_seed"${i}"" \
+        --SVD_ld 0. --no_MCD --advcoeff 0.
+    python3 main.py --gpu $1 --task 'office' --target Webcam --partial_domain DSLR Webcam \
+        --exp_name "office_sourceonly_partial_DtoW_seed"${i}"" \
+        --SVD_ld 0. --no_MCD --advcoeff 0.
+    python3 main.py --gpu $1 --task 'office' --target DSLR --partial_domain DSLR Webcam \
+        --exp_name "office_sourceonly_partial_WtoD_seed"${i}"" \
+        --SVD_ld 0. --no_MCD --advcoeff 0.
 done
+
+python3 main.py --gpu $1 --task 'office' --target Amazon --partial_domain Amazon DSLR \
+    --exp_name "office_sourceonly_partial_DtoA_seed"${i}"" \
+            --SVD_ld 0. --no_MCD --advcoeff 0. --num_steps_stop 50000
 

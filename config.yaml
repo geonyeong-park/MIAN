@@ -39,7 +39,10 @@ data:
 
 train:
   num_steps: 100000
-  num_steps_stop: 25000
+  num_steps_stop:
+    digits: 50000
+    office: 25000
+    office_home: 18000
   batch_size:
     digits: 128
     office: 16
