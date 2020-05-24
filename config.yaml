@@ -14,46 +14,54 @@ data:
     office: 256
     office_caltech_10: 256
     office_home: 256
+    visda: 256
   crop_size:
     digits: 32
     office: 224
     office_caltech_10: 224
     office_home: 224
+    visda: 224
   num_classes:
     digits: 10
     office: 31
     office_caltech_10: 10
     office_home: 65
+    visda: 345
   domain:
     digits: ['MNIST', 'USPS', 'SYNTH', 'SVHN', 'MNISTM']
     office: ['Amazon', 'DSLR', 'Webcam']
     office_caltech_10: ['Amazon', 'Caltech', 'DSLR', 'Webcam']
     office_home: ['Realworld', 'Clipart', 'Product', 'Art']
+    visda: ['Clipart', 'Painting', 'Real', 'Sketch']
   num_domain:
     digits: 5
     office: 3
     office_caltech_10: 4
     office_home: 4
+    visda: 4
   num_workers: 1
 
 
 train:
   num_steps: 100000
   num_steps_stop:
-    digits: 50000
+    digits: 25000
     office: 25000
     office_home: 18000
+    visda: 50000
   batch_size:
     digits: 128
     office: 16
     office_caltech_10: 16
     office_home: 16
+    visda: 16
   partial: False
   optimizer: 
     digits: 'Adam' 
     office: 'Momentum' 
     office_caltech_10: 'Momentum' 
     office_home: 'Momentum' 
+    visda: 'Momentum' 
   SVD_k: 1
   SVD_ld: 0.0001
   SVD_ld_adapt: 'exponential' # auto, exponential, constant
@@ -72,6 +80,9 @@ train:
     office_home:
       lr: 0.001
       momentum: 0.9
+    visda:
+      lr: 0.001
+      momentum: 0.9
   netD:
     digits:
       lr: 0.0002
@@ -85,11 +96,15 @@ train:
     office_home:
       lr: 0.001
       momentum: 0.9
+    visda:
+      lr: 0.001
+      momentum: 0.9
   lr_decay_power:
     digits: 0.9
     office: 0.9
     office_caltech_10: 0.9
     office_home: 0.9
+    visda: 0.9
   weight_decay: 0.0005
   aux_sem_thres: 0.3
 
@@ -99,8 +114,9 @@ train:
       bloss_AdvFeat: 
         digits: 1.
         office: 0.1
-        office_home: 0.1
+        office_home: 0.2
         office_caltech_10: 0.1
+        visda: 0.2
     netD:
       Vanila:
         D_critic: 1

@@ -20,21 +20,17 @@ END
 domain=("SVHN" "SYNTH" "MNIST")
 
 for ((i=0;i<=0;i++)); do
-    python3 main.py --gpu $1 --task 'office' --target Amazon --partial_domain Amazon DSLR \
-        --exp_name "office_sourceonly_partial_DtoA_seed"${i}"" \
+    python3 main.py --gpu $1 --task 'office_home' --target Art --partial_domain Art Clipart \
+        --exp_name "Home_sourceonly_partial_CltoAr_seed"${i}"" \
         --SVD_ld 0. --no_MCD --advcoeff 0.
-    python3 main.py --gpu $1 --task 'office' --target Amazon --partial_domain Amazon Webcam \
-        --exp_name "office_sourceonly_partial_WtoA_seed"${i}"" \
+    python3 main.py --gpu $1 --task 'office_home' --target Clipart --partial_domain Art Clipart \
+        --exp_name "Home_sourceonly_partial_ArtoCl_seed"${i}"" \
         --SVD_ld 0. --no_MCD --advcoeff 0.
-    python3 main.py --gpu $1 --task 'office' --target Webcam --partial_domain DSLR Webcam \
-        --exp_name "office_sourceonly_partial_DtoW_seed"${i}"" \
+    python3 main.py --gpu $1 --task 'office_home' --target Product --partial_domain Product Real \
+        --exp_name "Home_sourceonly_partial_RtoP_seed"${i}"" \
         --SVD_ld 0. --no_MCD --advcoeff 0.
-    python3 main.py --gpu $1 --task 'office' --target DSLR --partial_domain DSLR Webcam \
-        --exp_name "office_sourceonly_partial_WtoD_seed"${i}"" \
+    python3 main.py --gpu $1 --task 'office' --target Real --partial_domain Product Real \
+        --exp_name "Home_sourceonly_partial_PtoR_seed"${i}"" \
         --SVD_ld 0. --no_MCD --advcoeff 0.
 done
-
-python3 main.py --gpu $1 --task 'office' --target Amazon --partial_domain Amazon DSLR \
-    --exp_name "office_sourceonly_partial_DtoA_seed"${i}"" \
-            --SVD_ld 0. --no_MCD --advcoeff 0. --num_steps_stop 50000
 
