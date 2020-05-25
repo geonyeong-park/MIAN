@@ -188,7 +188,6 @@ def main(config, args, param_path):
         netDFeat = DigitDiscriminator(channel=prev_feature_size, num_domain=num_domain)
     else:
         netDFeat = OfficeDiscriminator(channel=prev_feature_size, num_domain=num_domain)
-
     netDFeat.to(gpu_map['netDFeat'])
 
     c1.apply(weight_init)
