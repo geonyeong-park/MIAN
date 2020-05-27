@@ -14,11 +14,9 @@ for lr in "${DGlr[@]}"; do
         done
     done
 done
-
 END
 
-<< "END"
-domain=("Clipart" "Painting" "Sketch" "Real")
+domain=("Sketch" "Real" "Painting" "Clipart")
 
 for ((i=0;i<=4;i++)); do
     for target in "${domain[@]}"; do
