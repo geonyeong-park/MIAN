@@ -11,6 +11,8 @@ class OfficeDiscriminator(nn.Module):
         super(OfficeDiscriminator, self).__init__()
 
         self.conv_domain_cls_patch = nn.Sequential(*[
+            nn.Linear(channel, channel),
+            nn.ReLU(inplace=True),
             nn.Linear(channel, channel//2),
             nn.ReLU(inplace=True),
             nn.Linear(channel//2, num_domain)

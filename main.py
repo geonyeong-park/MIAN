@@ -59,6 +59,8 @@ def get_arguments():
     parser.add_argument("--SVD_ld_adapt", default='exponential', required=False, help="auto, constant, exponential")
     parser.add_argument("--num_steps_stop", type=int, default=None, required=False,
                         help="")
+    parser.add_argument("--batch_size", type=int, default=None, required=False,
+                        help="")
     parser.add_argument("--resume", type=str, default=None, required=False, help="")
 
     return parser.parse_args()
@@ -122,6 +124,10 @@ def main(config, args, param_path):
         ns = args.num_steps_stop
         print('num_steps_stop: ', ns)
         config['train']['num_steps_stop'][args.task] = ns
+    if args.batch_size is not None:
+        bs = args.batch_size
+        print('batch_size: ', bs)
+        config['train']['batch_size'][args.task] = bs
     if args.optimizer is not None:
         o = args.optimizer
         print('optimizer: ', o)

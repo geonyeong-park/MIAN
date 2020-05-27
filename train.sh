@@ -19,7 +19,7 @@ END
 
 domain=("SVHN" "SYNTH" "MNIST")
 
-for ((i=0;i<=0;i++)); do
+for ((i=1;i<=3;i++)); do
     python3 main.py --gpu $1 --task 'office_home' --target Art --partial_domain Art Clipart \
         --exp_name "Home_sourceonly_partial_CltoAr_seed"${i}"" \
         --SVD_ld 0. --no_MCD --advcoeff 0.
@@ -29,8 +29,11 @@ for ((i=0;i<=0;i++)); do
     python3 main.py --gpu $1 --task 'office_home' --target Product --partial_domain Product Real \
         --exp_name "Home_sourceonly_partial_RtoP_seed"${i}"" \
         --SVD_ld 0. --no_MCD --advcoeff 0.
-    python3 main.py --gpu $1 --task 'office' --target Real --partial_domain Product Real \
+    python3 main.py --gpu $1 --task 'office_home' --target Real --partial_domain Product Real \
         --exp_name "Home_sourceonly_partial_PtoR_seed"${i}"" \
         --SVD_ld 0. --no_MCD --advcoeff 0.
 done
 
+python3 main.py --gpu $1 --task 'office_home' --target Real --partial_domain Product Real \
+    --exp_name "Home_sourceonly_partial_PtoR_seed0" \
+    --SVD_ld 0. --no_MCD --advcoeff 0.

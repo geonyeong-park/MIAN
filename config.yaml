@@ -48,7 +48,7 @@ train:
     digits: 25000
     office: 25000
     office_home: 18000
-    visda: 50000
+    visda: 25000
   batch_size:
     digits: 128
     office: 16

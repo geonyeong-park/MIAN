@@ -17,12 +17,23 @@ done
 
 END
 
-domain=("Sketch" "Real" "Painting" "Clipart")
+<< "END"
+domain=("Clipart" "Painting" "Sketch" "Real")
 
-for ((i=4;i<=4;i++)); do
+for ((i=0;i<=4;i++)); do
     for target in "${domain[@]}"; do
         python3 main.py --gpu $1 --task 'visda' --optimizer 'Momentum' --target $target \
-            --exp_name "visda_noMCD_decay_1e-4_adv0.2_"$target"_seed_"$i"" \
+            --exp_name "visda_sourceonly_"$target"_seed_"$i"" \
+            --SVD_ld 0. --SVD_norm --SVD_k 1 --advcoeff 0. --no_MCD --batch_size 14
+    done
+done
+END
+
+domain=("Art" "Clipart")
+for ((i=3;i<=6;i++)); do
+    for target in "${domain[@]}"; do
+        python3 main.py --gpu $1 --task 'office_home' --optimizer 'Momentum' --target $target \
+            --exp_name "Home_noMCD_decay_1e-4_adv0.2_"$target"_seed_"$i"" \
             --SVD_ld 0.0001 --SVD_norm --SVD_k 1 --advcoeff 0.2 --no_MCD
     done
 done

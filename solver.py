@@ -96,7 +96,7 @@ class Solver(object):
         self.log_loss['D_loss'] = []
         self.log_lr = {}
         self.log_step = 100
-        self.val_step = 100
+        self.val_step = 1000
         self.tsne_step = 2000
         self.save_step = 10000 #5000
         self.logger = Logger(self.log_dir)
