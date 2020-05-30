@@ -68,7 +68,7 @@ class Solver(object):
 
         self.base_lr = base_lr
         self.DFeat_lr = DFeat_lr
-        self.FeatAdv_coeff = config['train']['lambda']['base_model']['bloss_AdvFeat'][task]
+        self.FeatAdv_coeff_init = config['train']['lambda']['base_model']['bloss_AdvFeat'][task]
         self.num_classes = config['data']['num_classes'][task]
         self.SVD_k = config['train']['SVD_k']
         self.SVD_ld = config['train']['SVD_ld']
@@ -116,6 +116,9 @@ class Solver(object):
             self.C1.train()
             self.C2.train()
             self.netDFeat.train()
+
+            p = float(i_iter) / self.early_stop_step
+            self.FeatAdv_coeff = self.FeatAdv_coeff_init * (2. / (1. + np.exp(-10. * p)) - 1.)
 
             self._train_step(i_iter)
 
@@ -305,6 +308,7 @@ class Solver(object):
         # ----------------------------
         # SVD Entropy regularization
         # ----------------------------
+        """
         SVD_en = Variable(torch.tensor(0.), requires_grad=False).to(self.gpu0)
         for d in range(self.num_domain):
             d_feature = adv_feature[d*self.batch_size: (d+1)*self.batch_size]
@@ -327,7 +331,7 @@ class Solver(object):
         SVD_en.backward()
         self.optBase.step()
         self._zero_grad()
-
+        """
         # ----------------------------
 
         adv_feature, _ = self.basemodel(images)
