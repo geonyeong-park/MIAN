@@ -47,7 +47,7 @@ train:
   num_steps_stop:
     digits: 25000
     office: 25000
-    office_home: 18000
+    office_home: 25000
     visda: 25000
   batch_size:
     digits: 128

@@ -28,11 +28,8 @@ for ((i=0;i<=4;i++)); do
 done
 END
 
-domain=("Art" "Clipart" "Product" "Realworld")
 for ((i=0;i<=4;i++)); do
-    for target in "${domain[@]}"; do
-        python3 main.py --gpu $1 --task 'office_home' --optimizer 'Momentum' --target $target \
-            --exp_name "Home_advonly_0.5_grow_"$target"_seed_"$i"" \
-            --SVD_ld 0. --SVD_norm --SVD_k 1 --advcoeff 0.5 --no_MCD
-    done
+    python3 main.py --gpu $1 --task 'office' --optimizer 'Momentum' --target Amazon \
+        --exp_name "office_Amazon_advonly_0.2_grow_seed_"$i"" \
+        --SVD_ld 0. --SVD_norm --SVD_k 1 --advcoeff 0.2 --no_MCD
 done

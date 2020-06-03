@@ -110,6 +110,7 @@ class Solver(object):
         self.SVD_ld_array = [self.SVD_ld for _ in range(self.num_domain)]
         if self.SVD_ld_adapt == 'auto':
             self.SVD_ld_array = [0. for _ in range(self.num_domain)]  # initialize with zero debiased lambda
+        adv_thres = 18000
 
         for i_iter in range(self.total_step):
             self.basemodel.train()
@@ -117,7 +118,10 @@ class Solver(object):
             self.C2.train()
             self.netDFeat.train()
 
-            p = float(i_iter) / self.early_stop_step
+            if i_iter > adv_thres:
+                p = 1.
+            else:
+                p = float(i_iter) / 18000
             self.FeatAdv_coeff = self.FeatAdv_coeff_init * (2. / (1. + np.exp(-10. * p)) - 1.)
 
             self._train_step(i_iter)
