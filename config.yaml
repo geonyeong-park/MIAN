@@ -1,8 +1,8 @@
 exp_setting:
-  exp_name: 'GTA2City'
+  exp_name: ''
   snapshot_dir: 'snapshots'
   log_dir: 'log'
-  use_tensorboard: True
+  use_tensorboard: False
   save_pred_every: 5000
 
 
@@ -45,7 +45,7 @@ data:
 train:
   num_steps: 100000
   num_steps_stop:
-    digits: 25000
+    digits: 50000
     office: 25000
     office_home: 25000
     visda: 25000
@@ -56,16 +56,15 @@ train:
     office_home: 16
     visda: 16
   partial: False
-  optimizer: 
-    digits: 'Adam' 
-    office: 'Momentum' 
-    office_caltech_10: 'Momentum' 
-    office_home: 'Momentum' 
-    visda: 'Momentum' 
+  optimizer:
+    digits: 'Adam'
+    office: 'Momentum'
+    office_caltech_10: 'Momentum'
+    office_home: 'Momentum'
+    visda: 'Momentum'
   SVD_k: 1
   SVD_ld: 0.0001
-  SVD_ld_adapt: 'exponential' # auto, exponential, constant
-  SVD_ld_thres: 0.8 # auto, exponential, constant
+  SVD_ld_adapt: 'exponential' # exponential, constant
 
   base_model:
     digits:
@@ -111,21 +110,13 @@ train:
   lambda:
     base_model:
       bloss_Clf: 1.
-      bloss_AdvFeat: 
+      bloss_AdvFeat:
         digits: 1.
         office: 0.1
         office_home: 0.2
         office_caltech_10: 0.1
         visda: 0.2
-    netD:
-      Vanila:
-        D_critic: 1
-      LS:
-        D_critic: 1
-      WGAN_GP:
-        GP: 10
-        D_critic: 1
 
   GAN:
     featAdv: 'LS'
-  base: 'ResNet'  # Alex, VGG, ResNet
+  base: 'ResNet'  # ResNet

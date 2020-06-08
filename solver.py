@@ -13,7 +13,6 @@ from PIL import Image
 from torchvision.utils import save_image
 from sklearn.manifold import TSNE
 from Visualize import plot_embedding
-import horovod.torch as hvd
 import math
 import warnings
 import time
@@ -61,8 +60,7 @@ class Solver(object):
             self.domain_label[i*self.batch_size: (i+1)*self.batch_size] = i
 
         assert config['train']['GAN']['featAdv'] == 'Vanila' or \
-            config['train']['GAN']['featAdv'] == 'LS' or \
-            config['train']['GAN']['featAdv'] == 'WGAN_GP'
+            config['train']['GAN']['featAdv'] == 'LS'
         self.featAdv_algorithm = config['train']['GAN']['featAdv']
 
         self.base_lr = base_lr
@@ -73,7 +71,6 @@ class Solver(object):
         self.SVD_ld = config['train']['SVD_ld']
         self.SVD_ld_init = self.SVD_ld
         self.SVD_norm = config['train']['SVD_norm']
-        self.no_align = config['train']['no_align']
         self.SVD_ld_adapt = config['train']['SVD_ld_adapt']
         self.SVD_ld_thres = config['train']['SVD_ld_thres']
         self.ld_alpha = 1e-6
@@ -106,8 +103,6 @@ class Solver(object):
 
         self.start_time = time.time()
         self.SVD_ld_array = [self.SVD_ld for _ in range(self.num_domain)]
-        if self.SVD_ld_adapt == 'auto':
-            self.SVD_ld_array = [0. for _ in range(self.num_domain)]  # initialize with zero debiased lambda
         adv_thres = 18000
 
         for i_iter in range(self.total_step):
@@ -153,7 +148,6 @@ class Solver(object):
             self.log_lr['C2'] = adjust_learning_rate(self.optC2, self.base_lr, i_iter, self.total_step, self.power)
             self.log_lr['DFeat'] = adjust_learning_rate(self.optDFeat, self.DFeat_lr, i_iter, self.total_step, self.power)
 
-
     def _fake_domain_label(self, tensor, model):
         if type(tensor).__module__ == np.__name__:
             tensor = torch.tensor(tensor)
@@ -161,17 +155,6 @@ class Solver(object):
         for i in range(self.num_domain):
             ones[self.batch_size*i: self.batch_size*(i+1), i] = 0.
         return ones.to(self.gpu_map['netD{}'.format(model)])
-
-    def _fake_domain_label_no_align(self, tensor, model):
-        if type(tensor).__module__ == np.__name__:
-            tensor = torch.tensor(tensor)
-        zeros = torch.zeros_like(tensor, dtype=torch.float)
-        for i in range(self.num_domain):
-            if i < self.num_source:
-                zeros[self.batch_size*i: self.batch_size*(i+1), -1] = 1.
-            else:
-                zeros[self.batch_size*i: self.batch_size*(i+1), :-1] = 1.
-        return zeros.to(self.gpu_map['netD{}'.format(model)])
 
     def _real_domain_label(self, tensor, model):
         if type(tensor).__module__ == np.__name__:
@@ -182,10 +165,8 @@ class Solver(object):
         return zeros.to(self.gpu_map['netD{}'.format(model)])
 
     def _update_SVD_ld(self, entropy, i_iter, index):
-        assert self.SVD_ld_adapt == 'auto' or self.SVD_ld_adapt == 'exponential' or self.SVD_ld_adapt == 'constant'
-        if self.SVD_ld_adapt == 'auto':
-            self.SVD_ld_array[index] = max(0, self.SVD_ld_array[index] + self.ld_alpha * (self.SVD_ld_thres - entropy))
-        elif self.SVD_ld_adapt == 'exponential':
+        assert self.SVD_ld_adapt == 'exponential' or self.SVD_ld_adapt == 'constant'
+        if self.SVD_ld_adapt == 'exponential':
             p = float(i_iter) / self.early_stop_step
             self.SVD_ld_array[index] = self.SVD_ld_init * (2. - 2. / (1. + np.exp(-10. * p)))
         else:
@@ -337,10 +318,7 @@ class Solver(object):
         adv_feature, _ = self.basemodel(images)
         DFeatlogit = self.netDFeat(adv_feature.to(self.gpu_map['netDFeat']))
 
-        if self.no_align:
-            fake_domain_label = self._fake_domain_label_no_align(DFeatlogit, 'Feat')
-        else:
-            fake_domain_label = self._fake_domain_label(DFeatlogit, 'Feat')
+        fake_domain_label = self._fake_domain_label(DFeatlogit, 'Feat')
 
         if self.featAdv_algorithm == 'Vanila':
             bloss_AdvFeat = nn.BCEWithLogitsLoss()(DFeatlogit, fake_domain_label)
