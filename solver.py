@@ -10,7 +10,6 @@ from utils.loss import CrossEntropy2d, loss_calc, lr_poly, adjust_learning_rate,
 import time
 import datetime
 from PIL import Image
-from logger import Logger
 from torchvision.utils import save_image
 from sklearn.manifold import TSNE
 from Visualize import plot_embedding
@@ -99,7 +98,6 @@ class Solver(object):
         self.val_step = 1000
         self.tsne_step = 2000
         self.save_step = 10000 #5000
-        self.logger = Logger(self.log_dir)
 
         self.tsne = TSNE(n_components=2, perplexity=20, init='pca', n_iter=3000)
 
