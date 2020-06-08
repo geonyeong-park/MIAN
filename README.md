@@ -23,6 +23,6 @@ Provided as a supplementary code for NeurIPS 2020.
 python3 main.py --gpu 0 --task office --target Amazon --exp_name Amazon_test \ 
                         --advcoeff 0.1 --SVD_ld 0.0001 --no_MCD
 ```
-- advcoeff: $$\lambda_0$$ in paper
-- SVD_ld: $$\mu_0$$ in paper
+- advcoeff: $\lambda_0$ in paper
+- SVD_ld: $\mu_0$ in paper
 - no_MCD: Run main.py without Maximum Classifier Discrepancy (MCD, Saito et al., 2018)
