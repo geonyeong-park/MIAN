@@ -1,6 +1,7 @@
 # A Simple Unified Information Regularization Framework for Multi-Source Domain Adaptation
 Pytorch implementation of MIAN: Multi-source Information-regularized Adaptation Network.
 Provided as a supplementary code for NeurIPS 2020. 
+*Pytorch version: 1.4.0*
 
 ## Dataset
 - We support three multi-domain adaptation datasets: 
