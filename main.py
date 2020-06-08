@@ -5,14 +5,12 @@ import torch.backends.cudnn as cudnn
 import torch.nn.functional as F
 import torch.optim as optim
 import os
-import os.path as osp
 import matplotlib.pyplot as plt
 import random
 from shutil import copyfile
 from solver import Solver
 from model.deeplab_res import DeeplabRes
 from model.deeplab_digit import DeepDigits
-from model.deeplab_vgg import DeeplabVGG
 from model.discriminator import DigitDiscriminator, OfficeDiscriminator
 from model.classifier import Predictor
 from dataset.multiloader import MultiDomainLoader
