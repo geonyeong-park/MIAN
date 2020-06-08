@@ -50,8 +50,6 @@ def get_arguments():
                         help="")
     parser.add_argument("--SVD_k", type=int, default=None, required=False,
                         help="")
-    parser.add_argument("--SVD_norm", default=False, required=False, action='store_true',
-                        help="")
     parser.add_argument("--no_align", default=False, required=False, action='store_true',
                         help="")
     parser.add_argument("--SVD_ld_adapt", default='exponential', required=False, help="auto, constant, exponential")
@@ -106,10 +104,6 @@ def main(config, args, param_path):
         k = args.SVD_k
         print('SVD_en k: ', k)
         config['train']['SVD_k'] = k
-    if args.SVD_norm is not None:
-        n = args.SVD_norm
-        print('SVD_en norm: ', n)
-        config['train']['SVD_norm'] = n
     if args.no_align is not None:
         na = args.no_align
         print('no_align: ', na)

@@ -65,6 +65,7 @@ train:
   SVD_k: 1
   SVD_ld: 0.0001
   SVD_ld_adapt: 'exponential' # exponential, constant
+  SVD_norm: True
 
   base_model:
     digits:
