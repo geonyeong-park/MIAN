@@ -29,7 +29,7 @@ done
 END
 
 for ((i=0;i<=4;i++)); do
-    python3 main.py --gpu $1 --task 'office' --optimizer 'Momentum' --target Amazon \
-        --exp_name "office_Amazon_advonly_0.2_grow_seed_"$i"" \
-        --SVD_ld 0. --SVD_norm --SVD_k 1 --advcoeff 0.2 --no_MCD
+    python3 main.py --gpu $1 --task 'office' --optimizer 'Momentum' --target $2 \
+        --exp_name "office_"$2"_exponential_grow_0.1_seed_"$i"" \
+        --SVD_ld 0.0001 --SVD_ld_adapt exponential --SVD_norm --SVD_k 1 --advcoeff 0.1 --no_MCD
 done

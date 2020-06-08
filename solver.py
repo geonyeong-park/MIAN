@@ -312,7 +312,6 @@ class Solver(object):
         # ----------------------------
         # SVD Entropy regularization
         # ----------------------------
-        """
         SVD_en = Variable(torch.tensor(0.), requires_grad=False).to(self.gpu0)
         for d in range(self.num_domain):
             d_feature = adv_feature[d*self.batch_size: (d+1)*self.batch_size]
@@ -335,7 +334,6 @@ class Solver(object):
         SVD_en.backward()
         self.optBase.step()
         self._zero_grad()
-        """
         # ----------------------------
 
         adv_feature, _ = self.basemodel(images)
