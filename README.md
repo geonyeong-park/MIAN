@@ -26,4 +26,5 @@ python3 main.py --gpu 0 --task office --target Amazon --exp_name Amazon_test \
 ```
 - advcoeff: $\lambda_0$ in paper
 - SVD_ld: $\mu_0$ in paper
+  - Set to 0 for Vanila MIAN.
 - no_MCD: Run main.py without Maximum Classifier Discrepancy (MCD, Saito et al., 2018)
