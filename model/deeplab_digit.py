@@ -6,7 +6,6 @@ import torch
 import torchvision
 from torchvision import models
 from torchvision.models.resnet import ResNet, Bottleneck, model_urls, load_state_dict_from_url
-from model.generator_block import ResidualBlock
 import numpy as np
 
 

@@ -72,7 +72,6 @@ class Solver(object):
         self.SVD_ld_init = self.SVD_ld
         self.SVD_norm = config['train']['SVD_norm']
         self.SVD_ld_adapt = config['train']['SVD_ld_adapt']
-        self.SVD_ld_thres = config['train']['SVD_ld_thres']
         self.ld_alpha = 1e-6
 
         self.total_step = self.config['train']['num_steps']

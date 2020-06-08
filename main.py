@@ -28,7 +28,7 @@ def get_arguments():
                         help="choose gpu device.")
     parser.add_argument("--yaml", type=str, default='config.yaml',
                         help="yaml pathway")
-    parser.add_argument("--exp_name", type=str, default='GTA2City', required=True,
+    parser.add_argument("--exp_name", type=str, default='', required=True,
                         help="")
     parser.add_argument("--exp_detail", type=str, default=None, required=False,
                         help="")
@@ -49,8 +49,6 @@ def get_arguments():
     parser.add_argument("--SVD_ld", type=float, default=None, required=False,
                         help="")
     parser.add_argument("--SVD_k", type=int, default=None, required=False,
-                        help="")
-    parser.add_argument("--no_align", default=False, required=False, action='store_true',
                         help="")
     parser.add_argument("--SVD_ld_adapt", default='exponential', required=False, help="auto, constant, exponential")
     parser.add_argument("--num_steps_stop", type=int, default=None, required=False,
@@ -104,10 +102,6 @@ def main(config, args, param_path):
         k = args.SVD_k
         print('SVD_en k: ', k)
         config['train']['SVD_k'] = k
-    if args.no_align is not None:
-        na = args.no_align
-        print('no_align: ', na)
-        config['train']['no_align'] = na
     if args.SVD_ld_adapt is not None:
         ab = args.SVD_ld_adapt
         print('SVD_ld adapt: ', ab)

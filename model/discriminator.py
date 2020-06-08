@@ -3,7 +3,6 @@ import torch.nn as nn
 from torch.nn.utils import spectral_norm
 import torch.nn.functional as F
 import numpy as np
-from model.generator_block import ResidualBlock
 
 
 class OfficeDiscriminator(nn.Module):
