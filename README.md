@@ -10,23 +10,23 @@ Provided as a supplementary code for NeurIPS 2020.
   - Office-Home (Venkateswara et al., 2017): Art, Clipart, Realworld, Product
     - [Link](http://hemanthdv.org/OfficeHome-Dataset/)
 - Every datasets should be downloaded in data/ directory following the order below:
-    '''
-    data
-    ㄴoffice
-      ㄴamazon
-        ㄴ back_pack
-        ㄴ bike
-        ...
-    '''
+    
+    data  
+    ㄴoffice  
+      ㄴamazon  
+        ㄴ back_pack  
+        ㄴ bike  
+        ...  
+
   - Digits-Five require .pkl files. 
-    '''
-    data
-    ㄴdigits
-      ㄴmnist
-        ㄴtrain.pkl
-        ㄴval.pkl
+
+    data  
+    ㄴdigits  
+      ㄴmnist  
+        ㄴtrain.pkl  
+        ㄴval.pkl  
     ...
-    '''
+    
   - Due to memory issue, data and pretrained weights are not provided at this moment.
 
 ## Train example
