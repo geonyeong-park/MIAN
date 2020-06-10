@@ -28,3 +28,9 @@ python3 main.py --gpu 0 --task office --target Amazon --exp_name Amazon_test \
 - SVD_ld: $\mu_0$ in paper
   - Set to 0 for Vanila MIAN.
 - no_MCD: Run main.py without Maximum Classifier Discrepancy (MCD, Saito et al., 2018)
+
+```
+python3 main.py --gpu 0 --task office --target Amazon --partial_domain Amazon DSLR --exp_name Amazon_test_partial_DSLR \ 
+                        --advcoeff 0.1 --SVD_ld 0.0001 --no_MCD
+```
+- partial_domain: Specify domains to be utilized. (Includes target domain)
