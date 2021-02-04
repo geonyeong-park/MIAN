@@ -1,6 +1,6 @@
 # A Simple Unified Information Regularization Framework for Multi-Source Domain Adaptation
 Pytorch implementation of MIAN: Multi-source Information-regularized Adaptation Network.
-Provided as a supplementary code for ICLR 2021. 
+Provided as a supplementary code for ICML 2021. 
 *Pytorch version: 1.4.0*
 
 ## Dataset
